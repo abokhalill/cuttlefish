@@ -1,0 +1,1175 @@
+//! Fact admission. Causality check → invariant apply → frontier advance.
+
+use super::checkpoint::{Checkpoint, CheckpointError};
+use super::fact::Fact;
+use super::frontier::{build_deps_clock, check_dominance, FrontierState};
+use super::invariant::{Invariant, InvariantError};
+use super::state::{StateCell, STATE_CELL_SIZE};
+use super::topology::{CausalClock, FactId, PreciseClock, ESCALATION_THRESHOLD};
+use super::view::View;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AdmitError {
+    CausalityViolation = 1,
+    InvariantViolation = 2,
+    MalformedFact = 3,
+    PreciseDepsRequired = 4,
+    #[cfg(all(feature = "persistence", target_os = "linux"))]
+    BufferFull = 5,
+    CausalHorizonExceeded = 6,
+    ArenaFull = 7,
+    PayloadTooLarge = 8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AckMode {
+    Volatile = 0,
+    WALSubmitted = 1,
+    Durable = 2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CausalMode {
+    Fast = 0,
+    Precise = 1,
+}
+
+impl From<InvariantError> for AdmitError {
+    #[inline(always)]
+    fn from(_: InvariantError) -> Self {
+        AdmitError::InvariantViolation
+    }
+}
+
+pub struct Kernel<I: Invariant> {
+    pub frontier: FrontierState,
+    pub state: StateCell,
+    pub invariant: I,
+}
+
+impl<I: Invariant> Kernel<I> {
+    #[inline(always)]
+    pub const fn new(invariant: I) -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            state: StateCell::new(),
+            invariant,
+        }
+    }
+
+    #[inline(always)]
+    pub fn with_state(invariant: I, state: StateCell) -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            state,
+            invariant,
+        }
+    }
+
+    #[inline(always)]
+    pub fn admit(&mut self, fact: &Fact<'_>) -> Result<(), AdmitError> {
+        let deps = fact.deps();
+
+        if !deps.is_empty() {
+            let deps_clock = build_deps_clock(deps);
+            if !check_dominance(&self.frontier.clock, &deps_clock) {
+                return Err(AdmitError::CausalityViolation);
+            }
+        }
+
+        self.invariant
+            .apply(fact.payload(), self.state.as_bytes_mut())
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.frontier.advance(*fact.id());
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn admit_raw(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        if !deps.is_empty() {
+            let deps_clock = build_deps_clock(deps);
+            if !check_dominance(&self.frontier.clock, &deps_clock) {
+                return Err(AdmitError::CausalityViolation);
+            }
+        }
+
+        self.invariant
+            .apply(payload, self.state.as_bytes_mut())
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.frontier.advance(*fact_id);
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn admit_unchecked_deps(
+        &mut self,
+        fact_id: &FactId,
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        self.invariant
+            .apply(payload, self.state.as_bytes_mut())
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.frontier.advance(*fact_id);
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn clock(&self) -> &CausalClock {
+        &self.frontier.clock
+    }
+
+    #[inline(always)]
+    pub fn state(&self) -> &StateCell {
+        &self.state
+    }
+
+    #[inline(always)]
+    pub fn saturation(&self) -> f32 {
+        self.frontier.clock.saturation()
+    }
+
+    #[inline(always)]
+    pub fn query(&self, requirement: &CausalClock) -> Option<View> {
+        if self.frontier.clock.dominates(requirement) {
+            Some(View {
+                frontier: self.frontier.clone(),
+                state: self.state,
+            })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn re_anchor(
+        &mut self,
+        checkpoint: &Checkpoint,
+        new_facts: &[(&FactId, &[u8])],
+    ) -> Result<(), ReAnchorError> {
+        checkpoint.verify().map_err(ReAnchorError::CheckpointInvalid)?;
+
+        let computed_hash = Checkpoint::compute_state_hash(&checkpoint.state);
+        if computed_hash != checkpoint.state_hash {
+            return Err(ReAnchorError::CheckpointInvalid(CheckpointError::StateHashMismatch));
+        }
+
+        self.state.as_bytes_mut().copy_from_slice(checkpoint.state.as_bytes());
+
+        self.frontier.frontier.clear();
+        for fact_id in checkpoint.frontier.iter() {
+            self.frontier.frontier.push(*fact_id);
+        }
+        self.frontier.clock = checkpoint.clock;
+
+        for (fact_id, payload) in new_facts {
+            self.admit_unchecked_deps(fact_id, payload)
+                .map_err(ReAnchorError::ReplayFailed)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReAnchorError {
+    CheckpointInvalid(CheckpointError),
+    ReplayFailed(AdmitError),
+}
+
+use super::topology::ExactCausalIndex;
+
+/// Two-tier causality: BFVC prefilter + ExactIndex ground truth.
+pub struct TwoLaneKernel<I: Invariant> {
+    pub frontier: FrontierState,
+    pub state: StateCell,
+    pub invariant: I,
+    pub exact_index: ExactCausalIndex,
+}
+
+impl<I: Invariant> TwoLaneKernel<I> {
+    pub fn new(invariant: I) -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            state: StateCell::new(),
+            invariant,
+            exact_index: ExactCausalIndex::new(),
+        }
+    }
+
+    pub fn with_state(invariant: I, state: StateCell) -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            state,
+            invariant,
+            exact_index: ExactCausalIndex::new(),
+        }
+    }
+
+    #[inline]
+    pub fn admit(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        if !deps.is_empty() {
+            let deps_clock = build_deps_clock(deps);
+            if !check_dominance(&self.frontier.clock, &deps_clock) {
+                return Err(AdmitError::CausalityViolation);
+            }
+
+            self.exact_index
+                .contains_all_simd(deps)
+                .map_err(|_| AdmitError::CausalHorizonExceeded)?;
+        }
+
+        self.invariant
+            .apply(payload, self.state.as_bytes_mut())
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.frontier.advance(*fact_id);
+        self.exact_index.observe(fact_id);
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn admit_unchecked(
+        &mut self,
+        fact_id: &FactId,
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        self.invariant
+            .apply(payload, self.state.as_bytes_mut())
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.frontier.advance(*fact_id);
+        self.exact_index.observe(fact_id);
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn clock(&self) -> &CausalClock {
+        &self.frontier.clock
+    }
+
+    #[inline(always)]
+    pub fn state(&self) -> &StateCell {
+        &self.state
+    }
+
+    #[inline(always)]
+    pub fn exact_index(&self) -> &ExactCausalIndex {
+        &self.exact_index
+    }
+
+    /// Query with causal requirement.
+    #[inline]
+    pub fn query(&self, requirement: &CausalClock) -> Option<View> {
+        if self.frontier.clock.dominates(requirement) {
+            Some(View {
+                frontier: self.frontier.clone(),
+                state: self.state,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(all(feature = "persistence", target_os = "linux"))]
+pub use durable::DurableKernel;
+
+#[cfg(all(feature = "persistence", target_os = "linux"))]
+pub use two_lane_durable::TwoLaneDurableKernel;
+
+#[cfg(all(feature = "persistence", target_os = "linux"))]
+mod two_lane_durable {
+    use super::*;
+    use crate::core::persistence::{
+        ArenaError, PersistenceEntry, PersistenceFrontier, SlotIndex, SPSCProducer, WALArena,
+    };
+
+    pub struct TwoLaneDurableKernel<'a, I: Invariant, const N: usize = 4096> {
+        pub frontier: FrontierState,
+        pub state: StateCell,
+        pub invariant: I,
+        pub exact_index: ExactCausalIndex,
+        arena: &'a WALArena,
+        producer: SPSCProducer<'a, N>,
+        persistence_frontier: &'a PersistenceFrontier,
+    }
+
+    impl<'a, I: Invariant, const N: usize> TwoLaneDurableKernel<'a, I, N> {
+        pub fn new(
+            invariant: I,
+            arena: &'a WALArena,
+            producer: SPSCProducer<'a, N>,
+            persistence_frontier: &'a PersistenceFrontier,
+        ) -> Self {
+            Self {
+                frontier: FrontierState::new(),
+                state: StateCell::new(),
+                invariant,
+                exact_index: ExactCausalIndex::new(),
+                arena,
+                producer,
+                persistence_frontier,
+            }
+        }
+
+        pub fn with_state(
+            invariant: I,
+            state: StateCell,
+            arena: &'a WALArena,
+            producer: SPSCProducer<'a, N>,
+            persistence_frontier: &'a PersistenceFrontier,
+        ) -> Self {
+            Self {
+                frontier: FrontierState::new(),
+                state,
+                invariant,
+                exact_index: ExactCausalIndex::new(),
+                arena,
+                producer,
+                persistence_frontier,
+            }
+        }
+
+        #[inline]
+        pub fn admit(
+            &mut self,
+            fact_id: &FactId,
+            deps: &[FactId],
+            payload: &[u8],
+            ack_mode: AckMode,
+        ) -> Result<SlotIndex, AdmitError> {
+            let slot_idx = self.arena
+                .acquire_slot()
+                .map_err(|e| match e {
+                    ArenaError::Full => AdmitError::ArenaFull,
+                    _ => AdmitError::MalformedFact,
+                })?;
+
+            if let Err(e) = self.arena.write_slot(slot_idx, fact_id, payload) {
+                let _ = self.arena.release_slot(slot_idx);
+                return Err(match e {
+                    ArenaError::PayloadTooLarge => AdmitError::PayloadTooLarge,
+                    _ => AdmitError::MalformedFact,
+                });
+            }
+
+            if !deps.is_empty() {
+                let deps_clock = build_deps_clock(deps);
+                if !check_dominance(&self.frontier.clock, &deps_clock) {
+                    let _ = self.arena.release_slot(slot_idx);
+                    return Err(AdmitError::CausalityViolation);
+                }
+
+                if self.exact_index.contains_all_simd(deps).is_err() {
+                    let _ = self.arena.release_slot(slot_idx);
+                    return Err(AdmitError::CausalHorizonExceeded);
+                }
+            }
+
+            if self.invariant.apply(payload, self.state.as_bytes_mut()).is_err() {
+                let _ = self.arena.release_slot(slot_idx);
+                return Err(AdmitError::InvariantViolation);
+            }
+
+            self.frontier.advance(*fact_id);
+            self.exact_index.observe(fact_id);
+
+            match ack_mode {
+                AckMode::Volatile => {
+                    let _ = self.arena.release_slot(slot_idx);
+                }
+                AckMode::WALSubmitted | AckMode::Durable => {
+                    let header = self.arena.get_header(slot_idx).unwrap();
+                    let entry = PersistenceEntry {
+                        fact_id: *fact_id,
+                        data_ptr: self.arena.slot_ptr(slot_idx) as usize,
+                        data_len: header.payload_len,
+                        sequence: header.sequence,
+                    };
+
+                    if self.producer.try_push(entry).is_err() {
+                        let _ = self.arena.release_slot(slot_idx);
+                        return Err(AdmitError::BufferFull);
+                    }
+
+                    if ack_mode == AckMode::Durable {
+                        while !self.persistence_frontier.clock().might_contain(fact_id) {
+                            core::hint::spin_loop();
+                        }
+                    }
+                }
+            }
+
+            Ok(slot_idx)
+        }
+
+        #[inline]
+        pub fn admit_volatile(
+            &mut self,
+            fact_id: &FactId,
+            deps: &[FactId],
+            payload: &[u8],
+        ) -> Result<(), AdmitError> {
+            if !deps.is_empty() {
+                let deps_clock = build_deps_clock(deps);
+                if !check_dominance(&self.frontier.clock, &deps_clock) {
+                    return Err(AdmitError::CausalityViolation);
+                }
+                self.exact_index
+                    .contains_all_simd(deps)
+                    .map_err(|_| AdmitError::CausalHorizonExceeded)?;
+            }
+
+            self.invariant
+                .apply(payload, self.state.as_bytes_mut())
+                .map_err(|_| AdmitError::InvariantViolation)?;
+
+            self.frontier.advance(*fact_id);
+            self.exact_index.observe(fact_id);
+
+            Ok(())
+        }
+
+        #[inline(always)]
+        pub fn clock(&self) -> &CausalClock {
+            &self.frontier.clock
+        }
+
+        #[inline(always)]
+        pub fn state(&self) -> &StateCell {
+            &self.state
+        }
+
+        #[inline(always)]
+        pub fn persistence_frontier(&self) -> &PersistenceFrontier {
+            self.persistence_frontier
+        }
+
+        #[inline(always)]
+        pub fn arena(&self) -> &WALArena {
+            self.arena
+        }
+
+        /// Query with durability requirement.
+        #[inline]
+        pub fn query_durable(&self, requirement: &CausalClock) -> Option<View> {
+            if self.persistence_frontier.dominates(requirement) {
+                Some(View {
+                    frontier: self.frontier.clone(),
+                    state: self.state,
+                })
+            } else {
+                None
+            }
+        }
+    }
+}
+
+#[cfg(all(feature = "persistence", target_os = "linux"))]
+mod durable {
+    use super::*;
+    use crate::core::persistence::{PersistenceEntry, PersistenceFrontier, SPSCProducer};
+    use core::sync::atomic::{AtomicU64, Ordering};
+
+    /// Default SPSC buffer capacity (power of two).
+    pub const PERSISTENCE_BUFFER_SIZE: usize = 4096;
+
+    /// Kernel with integrated persistence via SPSC buffer.
+    /// Producer side only—worker thread consumes and writes to disk.
+    pub struct DurableKernel<'a, I: Invariant, const N: usize = PERSISTENCE_BUFFER_SIZE> {
+        pub frontier: FrontierState,
+        pub state: StateCell,
+        pub invariant: I,
+        producer: SPSCProducer<'a, N>,
+        sequence: AtomicU64,
+        persistence_frontier: &'a PersistenceFrontier,
+    }
+
+    impl<'a, I: Invariant, const N: usize> DurableKernel<'a, I, N> {
+        pub fn new(
+            invariant: I,
+            producer: SPSCProducer<'a, N>,
+            persistence_frontier: &'a PersistenceFrontier,
+        ) -> Self {
+            Self {
+                frontier: FrontierState::new(),
+                state: StateCell::new(),
+                invariant,
+                producer,
+                sequence: AtomicU64::new(0),
+                persistence_frontier,
+            }
+        }
+
+        pub fn with_state(
+            invariant: I,
+            state: StateCell,
+            producer: SPSCProducer<'a, N>,
+            persistence_frontier: &'a PersistenceFrontier,
+        ) -> Self {
+            Self {
+                frontier: FrontierState::new(),
+                state,
+                invariant,
+                producer,
+                sequence: AtomicU64::new(0),
+                persistence_frontier,
+            }
+        }
+
+        #[inline]
+        pub fn admit_durable(
+            &mut self,
+            fact_id: &FactId,
+            deps: &[FactId],
+            payload: &[u8],
+        ) -> Result<(), AdmitError> {
+            if !deps.is_empty() {
+                let deps_clock = build_deps_clock(deps);
+                if !check_dominance(&self.frontier.clock, &deps_clock) {
+                    return Err(AdmitError::CausalityViolation);
+                }
+            }
+
+            self.invariant
+                .apply(payload, self.state.as_bytes_mut())
+                .map_err(|_| AdmitError::InvariantViolation)?;
+
+            let seq = self.sequence.fetch_add(1, Ordering::Relaxed);
+            let entry = PersistenceEntry {
+                fact_id: *fact_id,
+                data_ptr: payload.as_ptr() as usize,
+                data_len: payload.len() as u32,
+                sequence: seq,
+            };
+
+            self.producer.try_push(entry).map_err(|_| AdmitError::BufferFull)?;
+            self.frontier.advance(*fact_id);
+
+            Ok(())
+        }
+
+        #[inline(always)]
+        pub fn clock(&self) -> &CausalClock {
+            &self.frontier.clock
+        }
+
+        #[inline(always)]
+        pub fn state(&self) -> &StateCell {
+            &self.state
+        }
+
+        #[inline(always)]
+        pub fn persistence_frontier(&self) -> &PersistenceFrontier {
+            self.persistence_frontier
+        }
+
+        #[inline]
+        pub fn query_durable(&self, requirement: &CausalClock) -> Option<View> {
+            if self.persistence_frontier.dominates(requirement) {
+                Some(View {
+                    frontier: self.frontier.clone(),
+                    state: self.state,
+                })
+            } else {
+                None
+            }
+        }
+
+        #[inline]
+        pub fn query(&self, requirement: &CausalClock) -> Option<View> {
+            if self.frontier.clock.dominates(requirement) {
+                Some(View {
+                    frontier: self.frontier.clone(),
+                    state: self.state,
+                })
+            } else {
+                None
+            }
+        }
+
+        #[inline(always)]
+        pub fn buffer_len(&self) -> usize {
+            self.producer.len()
+        }
+
+        #[inline(always)]
+        pub fn is_buffer_full(&self) -> bool {
+            self.producer.is_full()
+        }
+    }
+}
+
+#[cfg(feature = "networking")]
+pub use networking::{BroadcastBuffer, BroadcastConsumer, BroadcastProducer, NetworkingKernel, BROADCAST_BUFFER_SIZE};
+
+#[cfg(feature = "networking")]
+mod networking {
+    use super::*;
+    use core::cell::UnsafeCell;
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    #[repr(align(64))]
+    struct CachePadded<T>(T);
+
+    #[derive(Clone, Copy)]
+    #[repr(C)]
+    pub struct BroadcastEntry {
+        pub fact_id: FactId,
+    }
+
+    impl BroadcastEntry {
+        pub const fn empty() -> Self {
+            Self { fact_id: [0u8; 32] }
+        }
+    }
+
+    pub struct BroadcastBuffer<const N: usize> {
+        buffer: UnsafeCell<[BroadcastEntry; N]>,
+        head: CachePadded<AtomicUsize>,
+        tail: CachePadded<AtomicUsize>,
+    }
+
+    unsafe impl<const N: usize> Send for BroadcastBuffer<N> {}
+    unsafe impl<const N: usize> Sync for BroadcastBuffer<N> {}
+
+    impl<const N: usize> BroadcastBuffer<N> {
+        const MASK: usize = N - 1;
+
+        pub fn new() -> Self {
+            Self {
+                buffer: UnsafeCell::new([BroadcastEntry::empty(); N]),
+                head: CachePadded(AtomicUsize::new(0)),
+                tail: CachePadded(AtomicUsize::new(0)),
+            }
+        }
+
+        pub fn split(&self) -> (BroadcastProducer<'_, N>, BroadcastConsumer<'_, N>) {
+            (BroadcastProducer { ring: self }, BroadcastConsumer { ring: self })
+        }
+    }
+
+    impl<const N: usize> Default for BroadcastBuffer<N> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    pub struct BroadcastProducer<'a, const N: usize> {
+        ring: &'a BroadcastBuffer<N>,
+    }
+
+    impl<'a, const N: usize> BroadcastProducer<'a, N> {
+        #[inline(always)]
+        pub fn try_push(&self, fact_id: FactId) -> Result<(), FactId> {
+            let head = self.ring.head.0.load(Ordering::Relaxed);
+            let tail = self.ring.tail.0.load(Ordering::Acquire);
+
+            if head.wrapping_sub(tail) >= N {
+                return Err(fact_id);
+            }
+
+            unsafe {
+                let slot = &mut (*self.ring.buffer.get())[head & BroadcastBuffer::<N>::MASK];
+                slot.fact_id = fact_id;
+            }
+
+            self.ring.head.0.store(head.wrapping_add(1), Ordering::Release);
+            Ok(())
+        }
+
+        #[inline(always)]
+        pub fn is_full(&self) -> bool {
+            let head = self.ring.head.0.load(Ordering::Relaxed);
+            let tail = self.ring.tail.0.load(Ordering::Acquire);
+            head.wrapping_sub(tail) >= N
+        }
+    }
+
+    pub struct BroadcastConsumer<'a, const N: usize> {
+        ring: &'a BroadcastBuffer<N>,
+    }
+
+    impl<'a, const N: usize> BroadcastConsumer<'a, N> {
+        #[inline(always)]
+        pub fn try_pop(&self) -> Option<FactId> {
+            let tail = self.ring.tail.0.load(Ordering::Relaxed);
+            let head = self.ring.head.0.load(Ordering::Acquire);
+
+            if tail == head {
+                return None;
+            }
+
+            let fact_id = unsafe {
+                (*self.ring.buffer.get())[tail & BroadcastBuffer::<N>::MASK].fact_id
+            };
+
+            self.ring.tail.0.store(tail.wrapping_add(1), Ordering::Release);
+            Some(fact_id)
+        }
+    }
+
+    pub const BROADCAST_BUFFER_SIZE: usize = 4096;
+
+    pub struct NetworkingKernel<'a, I: Invariant, const N: usize = BROADCAST_BUFFER_SIZE> {
+        pub frontier: FrontierState,
+        pub state: StateCell,
+        pub invariant: I,
+        broadcast: BroadcastProducer<'a, N>,
+    }
+
+    impl<'a, I: Invariant, const N: usize> NetworkingKernel<'a, I, N> {
+        pub fn new(invariant: I, broadcast: BroadcastProducer<'a, N>) -> Self {
+            Self {
+                frontier: FrontierState::new(),
+                state: StateCell::new(),
+                invariant,
+                broadcast,
+            }
+        }
+
+        pub fn with_state(invariant: I, state: StateCell, broadcast: BroadcastProducer<'a, N>) -> Self {
+            Self {
+                frontier: FrontierState::new(),
+                state,
+                invariant,
+                broadcast,
+            }
+        }
+
+        #[inline]
+        pub fn admit_broadcast(
+            &mut self,
+            fact_id: &FactId,
+            deps: &[FactId],
+            payload: &[u8],
+        ) -> Result<(), AdmitError> {
+            if !deps.is_empty() {
+                let deps_clock = build_deps_clock(deps);
+                if !check_dominance(&self.frontier.clock, &deps_clock) {
+                    return Err(AdmitError::CausalityViolation);
+                }
+            }
+
+            self.invariant
+                .apply(payload, self.state.as_bytes_mut())
+                .map_err(|_| AdmitError::InvariantViolation)?;
+
+            let _ = self.broadcast.try_push(*fact_id);
+
+            self.frontier.advance(*fact_id);
+            Ok(())
+        }
+
+        #[inline(always)]
+        pub fn clock(&self) -> &CausalClock {
+            &self.frontier.clock
+        }
+
+        #[inline(always)]
+        pub fn state(&self) -> &StateCell {
+            &self.state
+        }
+
+        #[inline(always)]
+        pub fn is_broadcast_full(&self) -> bool {
+            self.broadcast.is_full()
+        }
+    }
+}
+
+/// Auto-escalating kernel: BFVC → PreciseClock when saturation ≥ 40%.
+pub struct EscalatingKernel<I: Invariant> {
+    pub frontier: FrontierState,
+    pub state: StateCell,
+    pub invariant: I,
+    pub precise: PreciseClock,
+    pub mode: CausalMode,
+}
+
+impl<I: Invariant> EscalatingKernel<I> {
+    #[inline(always)]
+    pub fn new(invariant: I) -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            state: StateCell::new(),
+            invariant,
+            precise: PreciseClock::new(),
+            mode: CausalMode::Fast,
+        }
+    }
+
+    #[inline(always)]
+    pub fn with_state(invariant: I, state: StateCell) -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            state,
+            invariant,
+            precise: PreciseClock::new(),
+            mode: CausalMode::Fast,
+        }
+    }
+
+    #[inline(always)]
+    fn check_escalation(&mut self) {
+        if self.mode == CausalMode::Fast && self.frontier.clock.saturation() >= ESCALATION_THRESHOLD {
+            self.mode = CausalMode::Precise;
+        }
+    }
+
+    #[inline]
+    pub fn admit(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        self.check_escalation();
+
+        match self.mode {
+            CausalMode::Fast => self.admit_fast(fact_id, deps, payload),
+            CausalMode::Precise => self.admit_precise(fact_id, deps, payload),
+        }
+    }
+
+    #[inline(always)]
+    fn admit_fast(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        if !deps.is_empty() {
+            let deps_clock = build_deps_clock(deps);
+            if !check_dominance(&self.frontier.clock, &deps_clock) {
+                return Err(AdmitError::CausalityViolation);
+            }
+        }
+
+        self.invariant
+            .apply(payload, self.state.as_bytes_mut())
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.frontier.advance(*fact_id);
+        self.precise.observe(fact_id);
+
+        Ok(())
+    }
+
+    #[inline]
+    fn admit_precise(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        if !deps.is_empty() && !self.precise.contains_all(deps) {
+            return Err(AdmitError::CausalityViolation);
+        }
+
+        self.invariant
+            .apply(payload, self.state.as_bytes_mut())
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.frontier.advance(*fact_id);
+        self.precise.observe(fact_id);
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn clock(&self) -> &CausalClock {
+        &self.frontier.clock
+    }
+
+    #[inline(always)]
+    pub fn state(&self) -> &StateCell {
+        &self.state
+    }
+
+    #[inline(always)]
+    pub fn saturation(&self) -> f32 {
+        self.frontier.clock.saturation()
+    }
+
+    #[inline(always)]
+    pub fn current_mode(&self) -> CausalMode {
+        self.mode
+    }
+
+    #[inline(always)]
+    pub fn escalate(&mut self) {
+        self.mode = CausalMode::Precise;
+    }
+
+    #[inline(always)]
+    pub fn reset_mode(&mut self) {
+        self.mode = CausalMode::Fast;
+        self.precise.clear();
+    }
+}
+
+pub const MAX_INVARIANTS: usize = 8;
+
+pub type InvariantFn = fn(payload: &[u8], state: &mut [u8]) -> Result<(), InvariantError>;
+
+#[derive(Clone)]
+pub struct MultiKernel {
+    pub frontier: FrontierState,
+    pub states: [StateCell; MAX_INVARIANTS],
+    pub invariants: [Option<InvariantFn>; MAX_INVARIANTS],
+    pub invariant_count: usize,
+}
+
+impl MultiKernel {
+    #[inline(always)]
+    pub fn new() -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            states: [StateCell::new(); MAX_INVARIANTS],
+            invariants: [None; MAX_INVARIANTS],
+            invariant_count: 0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn register(&mut self, invariant_fn: InvariantFn, initial_state: StateCell) -> Option<usize> {
+        if self.invariant_count >= MAX_INVARIANTS {
+            return None;
+        }
+        let idx = self.invariant_count;
+        self.states[idx] = initial_state;
+        self.invariants[idx] = Some(invariant_fn);
+        self.invariant_count += 1;
+        Some(idx)
+    }
+
+    #[inline(always)]
+    pub fn admit_multi(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payloads: &[&[u8]],
+    ) -> Result<(), AdmitError> {
+        if payloads.len() != self.invariant_count {
+            return Err(AdmitError::MalformedFact);
+        }
+
+        if !deps.is_empty() {
+            let deps_clock = build_deps_clock(deps);
+            if !check_dominance(&self.frontier.clock, &deps_clock) {
+                return Err(AdmitError::CausalityViolation);
+            }
+        }
+
+        let mut scratch: [[u8; STATE_CELL_SIZE]; MAX_INVARIANTS] = [[0u8; STATE_CELL_SIZE]; MAX_INVARIANTS];
+        for i in 0..self.invariant_count {
+            scratch[i].copy_from_slice(self.states[i].as_bytes());
+        }
+
+        for i in 0..self.invariant_count {
+            if let Some(inv_fn) = self.invariants[i] {
+                if inv_fn(payloads[i], &mut scratch[i]).is_err() {
+                    return Err(AdmitError::InvariantViolation);
+                }
+            }
+        }
+
+        for i in 0..self.invariant_count {
+            self.states[i].as_bytes_mut().copy_from_slice(&scratch[i]);
+        }
+
+        self.frontier.advance(*fact_id);
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn query(&self, requirement: &CausalClock) -> bool {
+        self.frontier.clock.dominates(requirement)
+    }
+
+    #[inline(always)]
+    pub fn state(&self, index: usize) -> Option<&StateCell> {
+        if index < self.invariant_count {
+            Some(&self.states[index])
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    pub fn clock(&self) -> &CausalClock {
+        &self.frontier.clock
+    }
+}
+
+impl Default for MultiKernel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[repr(C, align(64))]
+pub struct DualKernel<I1: Invariant + Copy, I2: Invariant + Copy> {
+    pub frontier: FrontierState,
+    pub state1: StateCell,
+    pub state2: StateCell,
+    pub inv1: I1,
+    pub inv2: I2,
+}
+
+impl<I1: Invariant + Copy, I2: Invariant + Copy> DualKernel<I1, I2> {
+    #[inline(always)]
+    pub fn new(inv1: I1, state1: StateCell, inv2: I2, state2: StateCell) -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            state1,
+            state2,
+            inv1,
+            inv2,
+        }
+    }
+
+    #[inline(always)]
+    pub fn admit(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload1: &[u8],
+        payload2: &[u8],
+    ) -> Result<(), AdmitError> {
+        if !deps.is_empty() {
+            let deps_clock = build_deps_clock(deps);
+            if !check_dominance(&self.frontier.clock, &deps_clock) {
+                return Err(AdmitError::CausalityViolation);
+            }
+        }
+
+        let mut scratch1 = *self.state1.as_bytes();
+        let mut scratch2 = *self.state2.as_bytes();
+
+        self.inv1
+            .apply(payload1, &mut scratch1)
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.inv2
+            .apply(payload2, &mut scratch2)
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        self.state1.as_bytes_mut().copy_from_slice(&scratch1);
+        self.state2.as_bytes_mut().copy_from_slice(&scratch2);
+
+        self.frontier.advance(*fact_id);
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn query(&self, requirement: &CausalClock) -> bool {
+        self.frontier.clock.dominates(requirement)
+    }
+
+    #[inline(always)]
+    pub fn clock(&self) -> &CausalClock {
+        &self.frontier.clock
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::invariants::total_supply::{ConservationState, DeltaPayload, TotalSupplyInvariant};
+    use zerocopy::IntoBytes;
+
+    fn make_state_cell(balance: i128, min: i128, max: i128) -> StateCell {
+        let state = ConservationState::new(balance, min, max);
+        let mut cell = StateCell::new();
+        cell.as_slice_mut().copy_from_slice(state.as_bytes());
+        cell
+    }
+
+    fn make_payload(delta: i128) -> [u8; 16] {
+        let payload = DeltaPayload { delta };
+        let mut buf = [0u8; 16];
+        buf.copy_from_slice(payload.as_bytes());
+        buf
+    }
+
+    #[test]
+    fn test_kernel_admit_no_deps() {
+        let state = make_state_cell(100, 0, 1000);
+        let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), state);
+
+        let fact_id: FactId = [1u8; 32];
+        let payload = make_payload(50);
+
+        let result = kernel.admit_raw(&fact_id, &[], &payload);
+        assert!(result.is_ok());
+
+        let s = kernel.state.cast_ref::<ConservationState>().unwrap();
+        assert_eq!(s.balance, 150);
+    }
+
+    #[test]
+    fn test_kernel_admit_with_deps() {
+        let state = make_state_cell(100, 0, 1000);
+        let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), state);
+
+        let fact1: FactId = [1u8; 32];
+        let payload1 = make_payload(50);
+        kernel.admit_raw(&fact1, &[], &payload1).unwrap();
+
+        let fact2: FactId = [2u8; 32];
+        let payload2 = make_payload(25);
+        let result = kernel.admit_raw(&fact2, &[fact1], &payload2);
+        assert!(result.is_ok());
+
+        let s = kernel.state.cast_ref::<ConservationState>().unwrap();
+        assert_eq!(s.balance, 175);
+    }
+
+    #[test]
+    fn test_kernel_causality_violation() {
+        let state = make_state_cell(100, 0, 1000);
+        let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), state);
+
+        let unknown_dep: FactId = [99u8; 32];
+        let fact_id: FactId = [1u8; 32];
+        let payload = make_payload(50);
+
+        let result = kernel.admit_raw(&fact_id, &[unknown_dep], &payload);
+        assert_eq!(result, Err(AdmitError::CausalityViolation));
+    }
+
+    #[test]
+    fn test_kernel_invariant_violation() {
+        let state = make_state_cell(100, 0, 1000);
+        let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), state);
+
+        let fact_id: FactId = [1u8; 32];
+        let payload = make_payload(-200);
+
+        let result = kernel.admit_raw(&fact_id, &[], &payload);
+        assert_eq!(result, Err(AdmitError::InvariantViolation));
+    }
+}

@@ -1,0 +1,83 @@
+[package]
+name = "cuttlefish"
+version = "0.1.0"
+edition = "2021"
+description = "Invariant-centric, causally ordered state kernel"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std = []
+persistence = ["std", "io-uring", "crc32fast"]
+networking = ["std", "tokio", "crc32fast"]
+
+[dependencies]
+arrayvec = { version = "0.7.6", default-features = false }
+zerocopy = { version = "0.8.33", default-features = false, features = ["derive"] }
+blake3 = { version = "1.5" }
+libc = "0.2"
+tokio = { version = "1.48", features = ["net", "rt-multi-thread", "sync", "time", "macros", "io-util"], optional = true }
+crc32fast = { version = "1.4", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = { version = "0.7", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.8.1", features = ["html_reports"] }
+
+[[bench]]
+name = "delta_i"
+harness = false
+
+[[bench]]
+name = "kernel"
+harness = false
+
+[[bench]]
+name = "multi_invariant"
+harness = false
+
+[[bench]]
+name = "reanchor"
+harness = false
+
+[[bench]]
+name = "escalation"
+harness = false
+
+[[bench]]
+name = "durable_admission"
+harness = false
+required-features = ["persistence"]
+
+[[bench]]
+name = "network_simulation"
+harness = false
+required-features = ["networking"]
+
+[[bench]]
+name = "two_lane"
+harness = false
+
+[[bench]]
+name = "comparative"
+harness = false
+
+[[bench]]
+name = "evaluation"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = true
