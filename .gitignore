@@ -17,4 +17,4 @@ Thumbs.db
 !README.md
 
 # Criterion benchmark data
-cuttlefish/target/
+target/criterion/
