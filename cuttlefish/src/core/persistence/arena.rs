@@ -1,63 +1,33 @@
 //! WALArena: 4K-aligned memory arena for zero-copy WAL staging.
-//!
-//! Provides fixed-size slots for payload storage. The kernel copies payloads
-//! into arena slots before invariant application, ensuring safe ownership
-//! for async io_uring writes.
-//!
-//! ## Lifecycle Management
-//!
-//! Each slot has an atomic reference count that tracks consumers:
-//! - `admit()` sets RefCount to N (typically 2: Persistence + Network)
-//! - io_uring completion decrements RefCount
-//! - Network broadcast completion decrements RefCount
-//! - When RefCount reaches 0, the slot is automatically released to the free pool
-//!
-//! This ensures zero-copy safety: the slot memory remains valid until all
-//! consumers have finished reading.
 
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-/// Reference count value indicating slot is not in use.
 pub const REFCOUNT_FREE: u32 = 0;
 
-/// Default reference count for dual-consumer mode (Persistence + Network).
 pub const REFCOUNT_DUAL: u32 = 2;
 
-/// Reference count for persistence-only mode.
 pub const REFCOUNT_PERSIST_ONLY: u32 = 1;
 
-/// Reference count for network-only mode (volatile facts).
 pub const REFCOUNT_NETWORK_ONLY: u32 = 1;
 
-/// Slot size: 256 bytes (fits most fact payloads, cache-line friendly).
 pub const SLOT_SIZE: usize = 256;
 
-/// Number of slots per arena page (4K / 256 = 16 slots per page, but we use more pages).
 pub const SLOTS_PER_ARENA: usize = 4096;
 
-/// Total arena size: 1MB (4096 slots × 256 bytes).
 pub const ARENA_SIZE: usize = SLOTS_PER_ARENA * SLOT_SIZE;
 
-/// Slot index type.
 pub type SlotIndex = u32;
 
-/// Invalid slot index sentinel.
 pub const INVALID_SLOT: SlotIndex = u32::MAX;
 
-/// Slot header stored at the beginning of each slot.
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct SlotHeader {
-    /// Fact ID for this slot.
     pub fact_id: [u8; 32],
-    /// Actual payload length (may be less than SLOT_SIZE - header).
     pub payload_len: u32,
-    /// Sequence number for ordering.
     pub sequence: u64,
-    /// Reference count (for zero-copy reads).
     pub refcount: u32,
-    /// Slot state: 0 = free, 1 = writing, 2 = committed, 3 = persisted.
     pub state: u32,
 }
 
@@ -78,14 +48,12 @@ impl SlotHeader {
     }
 }
 
-/// Payload capacity per slot (slot size minus header).
 pub const PAYLOAD_CAPACITY: usize = SLOT_SIZE - core::mem::size_of::<SlotHeader>();
 
 const _: () = {
     assert!(PAYLOAD_CAPACITY == 200);
 };
 
-/// Slot states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum SlotState {
@@ -95,7 +63,6 @@ pub enum SlotState {
     Persisted = 3,
 }
 
-/// A single slot in the arena.
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(64))]
 pub struct ArenaSlot {
@@ -118,73 +85,40 @@ impl ArenaSlot {
     }
 }
 
-/// Error returned when arena operations fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArenaError {
-    /// No free slots available.
     Full,
-    /// Payload too large for slot.
     PayloadTooLarge,
-    /// Invalid slot index.
     InvalidSlot,
-    /// Slot not in expected state.
     InvalidState,
 }
 
-/// WALArena: Fixed-size, 4K-aligned memory arena for WAL staging.
-///
-/// Design:
-/// - Slots are acquired by the kernel before invariant application.
-/// - Payload is copied into the slot (single memcpy).
-/// - SlotIndex is passed to SPSC for io_uring worker.
-/// - Worker reads directly from arena (zero-copy to disk).
-/// - Network layer can also read from arena (zero-copy broadcast).
-///
-/// Lifecycle:
-/// - `acquire_slot_with_refcount(N)` claims a slot with N consumers
-/// - Each consumer calls `decrement_refcount()` when done
-/// - When refcount hits 0, slot is automatically released to free pool
 #[repr(C, align(4096))]
 pub struct WALArena {
     slots: UnsafeCell<[ArenaSlot; SLOTS_PER_ARENA]>,
-    /// Atomic reference counts for each slot.
-    /// Stored separately from slots for cache-line efficiency during refcount ops.
     refcounts: [AtomicU32; SLOTS_PER_ARENA],
-    /// Bitmap tracking free slots (1 = free, 0 = in use).
-    /// 4096 slots = 64 u64 words.
     free_bitmap: [AtomicU64; 64],
-    /// Next slot hint for allocation (reduces contention).
     alloc_hint: AtomicU32,
-    /// Global sequence counter.
     sequence: AtomicU64,
-    /// Count of free slots.
     free_count: AtomicU32,
     _pad: [u8; 44],
 }
 
 const _: () = {
-    // Verify 4K alignment
     assert!(core::mem::align_of::<WALArena>() == 4096);
 };
 
-// Safety: WALArena uses atomic operations for synchronization.
 unsafe impl Send for WALArena {}
 unsafe impl Sync for WALArena {}
 
 impl WALArena {
-    /// Create a new arena with all slots free.
     pub fn new() -> Self {
-        // Initialize all bitmap words to all-ones (all free).
         let mut free_bitmap: [AtomicU64; 64] = unsafe { core::mem::zeroed() };
         for word in &mut free_bitmap {
             *word = AtomicU64::new(u64::MAX);
         }
 
-        // Initialize all refcounts to 0.
-        let refcounts: [AtomicU32; SLOTS_PER_ARENA] = {
-            // Safety: AtomicU32 with value 0 has same repr as zeroed memory
-            unsafe { core::mem::zeroed() }
-        };
+        let refcounts: [AtomicU32; SLOTS_PER_ARENA] = unsafe { core::mem::zeroed() };
 
         Self {
             slots: UnsafeCell::new([ArenaSlot::empty(); SLOTS_PER_ARENA]),

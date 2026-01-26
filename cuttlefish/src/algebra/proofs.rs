@@ -1,53 +1,15 @@
-//! Formal Proofs and Verification Infrastructure
-//!
-//! This module provides machine-checkable proof witnesses and verification
-//! infrastructure for the theoretical claims in Cuttlefish.
-//!
-//! # Proof Strategy
-//!
-//! We use a combination of:
-//! 1. **Type-level proofs**: Algebraic properties encoded in the type system
-//! 2. **Runtime witnesses**: Proof objects that can be verified
-//! 3. **Property-based testing**: QuickCheck-style verification of invariants
-//!
-//! # Key Theorems
-//!
-//! ## Theorem 1: Coordination-Freedom
-//! A commutative invariant requires zero coordination for concurrent admission.
-//!
-//! ## Theorem 2: Strong Eventual Consistency (SEC)
-//! For commutative invariants, all nodes receiving the same set of facts
-//! (in any order) converge to identical states.
-//!
-//! ## Theorem 3: Composition Preservation
-//! The composition of n commutative invariants is commutative.
-//!
-//! ## Theorem 4: Bounded Rejection Locality
-//! For bounded invariants, rejection decisions are local (require no global state).
+//! Proof witnesses. Runtime-verifiable algebraic property verification.
 
 use super::classes::{AlgebraicClass, CoordinationScope};
 
-/// Coordination class determined by invariant properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoordinationClass {
-    /// Zero coordination required - fully local admission
-    /// Applies to: Commutative, Idempotent, Lattice, Group invariants
     CoordinationFree,
-
-    /// Scoped coordination - only at boundary conditions
-    /// Applies to: Bounded invariants near capacity
-    ScopedCoordination {
-        /// Threshold at which coordination becomes necessary
-        threshold_percent: u8,
-    },
-
-    /// Global coordination required - total order needed
-    /// Applies to: Order-dependent invariants
+    ScopedCoordination { threshold_percent: u8 },
     GlobalCoordination,
 }
 
 impl CoordinationClass {
-    /// Derive coordination class from algebraic class.
     pub const fn from_algebraic(class: AlgebraicClass) -> Self {
         match class {
             AlgebraicClass::Commutative
@@ -56,56 +18,41 @@ impl CoordinationClass {
             | AlgebraicClass::Group => CoordinationClass::CoordinationFree,
 
             AlgebraicClass::BoundedCommutative => CoordinationClass::ScopedCoordination {
-                threshold_percent: 80, // Default: coordinate when >80% capacity
+                threshold_percent: 80,
             },
 
             AlgebraicClass::Ordered => CoordinationClass::GlobalCoordination,
         }
     }
 
-    /// Returns true if this class allows fully local admission.
     pub const fn is_local(&self) -> bool {
         matches!(self, CoordinationClass::CoordinationFree)
     }
 }
 
-/// Witness for commutativity proof.
-///
-/// This is a runtime-verifiable proof that two operations commute.
-/// Used for property-based testing and runtime verification.
 #[derive(Debug, Clone)]
 pub struct CommutativityProof {
-    /// Initial state before operations
     pub initial_state: [u8; 64],
-    /// First delta applied
     pub delta_a: [u8; 16],
-    /// Second delta applied
     pub delta_b: [u8; 16],
-    /// Result of applying A then B
     pub result_ab: [u8; 64],
-    /// Result of applying B then A
     pub result_ba: [u8; 64],
-    /// Whether the proof holds (results are equal)
     pub holds: bool,
 }
 
 impl CommutativityProof {
-    /// Create a new commutativity proof by testing both orderings.
     pub fn verify<F>(initial: &[u8; 64], delta_a: &[u8; 16], delta_b: &[u8; 16], apply: F) -> Self
     where
         F: Fn(&[u8], &mut [u8]) -> Result<(), ()>,
     {
-        // Apply A then B
         let mut state_ab = *initial;
         let ok_a1 = apply(delta_a, &mut state_ab).is_ok();
         let ok_b1 = apply(delta_b, &mut state_ab).is_ok();
 
-        // Apply B then A
         let mut state_ba = *initial;
         let ok_b2 = apply(delta_b, &mut state_ba).is_ok();
         let ok_a2 = apply(delta_a, &mut state_ba).is_ok();
 
-        // Both orderings must succeed and produce same result
         let holds = ok_a1 && ok_b1 && ok_a2 && ok_b2 && state_ab == state_ba;
 
         Self {
@@ -118,33 +65,21 @@ impl CommutativityProof {
         }
     }
 
-    /// Check if the commutativity property holds.
     pub const fn is_valid(&self) -> bool {
         self.holds
     }
 }
 
-/// Witness for convergence proof.
-///
-/// Demonstrates that multiple execution orders converge to the same state.
 #[derive(Debug, Clone)]
 pub struct ConvergenceWitness {
-    /// Initial state
     pub initial_state: [u8; 64],
-    /// Set of deltas applied (order-independent)
     pub deltas: Vec<[u8; 16]>,
-    /// Final state after all deltas
     pub final_state: [u8; 64],
-    /// Number of different orderings tested
     pub orderings_tested: u32,
-    /// Whether all orderings converged
     pub converged: bool,
 }
 
 impl ConvergenceWitness {
-    /// Create a convergence witness by testing multiple orderings.
-    ///
-    /// For n deltas, tests min(n!, max_orderings) permutations.
     pub fn verify<F>(
         initial: &[u8; 64],
         deltas: &[[u8; 16]],
@@ -164,13 +99,11 @@ impl ConvergenceWitness {
             };
         }
 
-        // Apply in original order to get reference result
         let mut reference_state = *initial;
         for delta in deltas {
             let _ = apply(delta, &mut reference_state);
         }
 
-        // Test reversed order
         let mut reversed_state = *initial;
         for delta in deltas.iter().rev() {
             let _ = apply(delta, &mut reversed_state);
@@ -178,13 +111,10 @@ impl ConvergenceWitness {
 
         let converged = reference_state == reversed_state;
 
-        // For small delta sets, test more permutations
         let orderings_tested = if deltas.len() <= 4 && deltas.len() >= 2 {
-            // Test a reversed-pairs permutation
             let mut test_state = *initial;
             let n = deltas.len();
 
-            // Apply in swapped-pairs order: [1,0,3,2,...] or similar
             for i in 0..n {
                 let idx = if i % 2 == 0 && i + 1 < n { i + 1 } else if i % 2 == 1 { i - 1 } else { i };
                 let _ = apply(&deltas[idx], &mut test_state);
@@ -214,15 +144,11 @@ impl ConvergenceWitness {
         }
     }
 
-    /// Check if convergence was verified.
     pub const fn is_valid(&self) -> bool {
         self.converged
     }
 }
 
-/// Idempotence proof witness.
-///
-/// Demonstrates that applying the same delta twice has no additional effect.
 #[derive(Debug, Clone)]
 pub struct IdempotenceProof {
     pub initial_state: [u8; 64],
@@ -233,7 +159,6 @@ pub struct IdempotenceProof {
 }
 
 impl IdempotenceProof {
-    /// Verify idempotence by applying delta twice.
     pub fn verify<F>(initial: &[u8; 64], delta: &[u8; 16], apply: F) -> Self
     where
         F: Fn(&[u8], &mut [u8]) -> Result<(), ()>,
@@ -260,7 +185,6 @@ impl IdempotenceProof {
     }
 }
 
-/// Associativity proof witness for lattice operations.
 #[derive(Debug, Clone)]
 pub struct AssociativityProof {
     pub a: [u8; 64],
@@ -272,7 +196,6 @@ pub struct AssociativityProof {
 }
 
 impl AssociativityProof {
-    /// Verify associativity: (a ⊔ b) ⊔ c = a ⊔ (b ⊔ c)
     pub fn verify<F>(a: &[u8; 64], b: &[u8; 64], c: &[u8; 64], join: F) -> Self
     where
         F: Fn(&[u8; 64], &[u8; 64]) -> [u8; 64],
@@ -300,20 +223,12 @@ impl AssociativityProof {
     }
 }
 
-/// Bounded invariant locality proof.
-///
-/// Demonstrates that rejection decisions require only local state.
 #[derive(Debug, Clone)]
 pub struct BoundedLocalityProof {
-    /// Current local state
     pub local_state: [u8; 64],
-    /// Proposed delta
     pub delta: [u8; 16],
-    /// Whether delta would be rejected
     pub rejected: bool,
-    /// Reason for rejection (if any)
     pub rejection_reason: Option<BoundedRejectionReason>,
-    /// Proof that no global state was consulted
     pub is_local_decision: bool,
 }
 
@@ -325,7 +240,6 @@ pub enum BoundedRejectionReason {
 }
 
 impl BoundedLocalityProof {
-    /// Create a locality proof for a bounded invariant.
     pub fn verify<F, G>(
         local_state: &[u8; 64],
         delta: &[u8; 16],
@@ -348,30 +262,19 @@ impl BoundedLocalityProof {
             delta: *delta,
             rejected,
             rejection_reason,
-            // By construction, we only consulted local_state
             is_local_decision: true,
         }
     }
 }
 
-/// Composition preservation proof.
-///
-/// Demonstrates that composing commutative invariants preserves commutativity.
 #[derive(Debug, Clone)]
 pub struct CompositionProof {
-    /// Number of invariants composed
     pub invariant_count: usize,
-    /// Individual commutativity proofs for each invariant
     pub individual_proofs: Vec<bool>,
-    /// Whether the composition is commutative
     pub composition_commutative: bool,
 }
 
 impl CompositionProof {
-    /// Verify that composition preserves commutativity.
-    ///
-    /// Theorem: If I₁, I₂, ..., Iₙ are all commutative, then their
-    /// parallel composition is also commutative.
     pub fn verify(individual_commutative: &[bool]) -> Self {
         let all_commutative = individual_commutative.iter().all(|&c| c);
 

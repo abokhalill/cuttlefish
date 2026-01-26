@@ -1,87 +1,15 @@
-//! Algebraic Causal Consistency: The Core Theorem
-//!
-//! This module formalizes the central theoretical contribution of Cuttlefish:
-//! the composition of lattice-based invariants with causal consistency enforcement.
-//!
-//! # The Algebraic Causal Consistency Theorem
-//!
-//! **Theorem (ACC):** For any invariant I whose state forms a join-semilattice (S, ⊔)
-//! under the delta application operation, if all facts are admitted under causal
-//! consistency (∀ dep ∈ deps(f): dep ∈ Frontier before f is admitted), then all
-//! correct replicas converge to the same state S* regardless of delivery order.
-//!
-//! Formally:
-//!
-//! ```text
-//! Let:
-//!   - F = {f₁, f₂, ..., fₙ} be a set of facts
-//!   - deps: F → P(F) be the dependency function
-//!   - apply: F × S → S be the state transition function
-//!   - (S, ⊔) be a join-semilattice
-//!
-//! Causal Admission Predicate:
-//!   CA(f, Frontier) ≡ ∀d ∈ deps(f): d ∈ Frontier
-//!
-//! Theorem: If:
-//!   1. apply(f, s₁ ⊔ s₂) = apply(f, s₁) ⊔ apply(f, s₂)  [Homomorphism]
-//!   2. apply(f, apply(g, s)) = apply(g, apply(f, s))     [Commutativity when deps satisfied]
-//!   3. All admissions satisfy CA(f, Frontier)            [Causal consistency]
-//!
-//! Then: For any two replicas R₁, R₂ that have admitted the same set F:
-//!   State(R₁) = State(R₂) = ⊔{apply(f, ⊥) : f ∈ F}
-//! ```
-//!
-//! # Proof Sketch
-//!
-//! 1. **Base case:** Empty fact set → both replicas at initial state ⊥.
-//!
-//! 2. **Inductive step:** Assume convergence for |F| = k. For |F| = k+1:
-//!    - Let f be any fact in F with all dependencies in F \ {f}
-//!    - By causal admission, f can only be admitted after its deps
-//!    - By commutativity, the order among independent facts doesn't matter
-//!    - By the lattice property, concurrent applications merge deterministically
-//!
-//! 3. **Conclusion:** The final state is the join of all fact contributions,
-//!    which is unique by the lattice properties.
-//!
-//! # Implementation
-//!
-//! The two-tier causality check in `TwoLaneKernel` enforces the CA predicate:
-//! - **Tier 0 (BFVC):** Fast probabilistic rejection of missing dependencies
-//! - **Tier 1 (ExactCausalIndex):** Ground truth verification via SIMD lookup
-//!
-//! This module provides:
-//! - Formal definitions of the theorem components
-//! - Proof witnesses for runtime verification
-//! - Property-based test infrastructure
+//! Algebraic Causal Consistency. Lattice + causal admission = convergence.
 
 use crate::algebra::lattice::JoinSemilattice;
 use crate::core::topology::FactId;
 
-/// Marker trait for invariants that satisfy the Algebraic Causal Consistency theorem.
-///
-/// An invariant implements this trait if:
-/// 1. Its state forms a join-semilattice
-/// 2. Delta application is commutative for causally-independent facts
-/// 3. Delta application distributes over join
-///
-/// # Safety Contract
-///
-/// Implementing this trait is a *claim* that the invariant satisfies ACC.
-/// The `AccProofWitness` can be used to verify this claim at runtime.
 pub trait CausallyConsistentInvariant {
-    /// The state type, which must form a join-semilattice.
     type State: JoinSemilattice + Clone + PartialEq;
 
-    /// Apply a fact's delta to the state.
-    /// Returns the new state (does not mutate in place for proof verification).
     fn apply_pure(&self, fact_id: &FactId, payload: &[u8], state: &Self::State) -> Option<Self::State>;
 
-    /// Get the bottom element (initial state) of the lattice.
     fn bottom(&self) -> Self::State;
 
-    /// Verify the homomorphism property:
-    /// apply(f, s₁ ⊔ s₂) = apply(f, s₁) ⊔ apply(f, s₂)
     fn verify_homomorphism(
         &self,
         fact_id: &FactId,
@@ -100,32 +28,21 @@ pub trait CausallyConsistentInvariant {
                 let joined_results = r1.join(&r2);
                 r_joined == joined_results
             }
-            // If any application fails, homomorphism vacuously holds for that case
             _ => true,
         }
     }
 }
 
-/// Proof witness for the Algebraic Causal Consistency theorem.
-///
-/// This structure captures a verified execution trace that demonstrates
-/// convergence under different delivery orders.
 #[derive(Debug, Clone)]
 pub struct AccProofWitness {
-    /// Number of facts in the test set
     pub fact_count: usize,
-    /// Number of different delivery orders tested
     pub orderings_tested: u32,
-    /// Whether all orderings converged to the same state
     pub converged: bool,
-    /// BLAKE3 hash of the final converged state (if converged)
     pub final_state_hash: Option<[u8; 32]>,
-    /// Causal violations detected (should be 0 for valid executions)
     pub causal_violations: u32,
 }
 
 impl AccProofWitness {
-    /// Create a new proof witness indicating successful convergence.
     pub fn converged(fact_count: usize, orderings_tested: u32, state_hash: [u8; 32]) -> Self {
         Self {
             fact_count,
@@ -136,7 +53,6 @@ impl AccProofWitness {
         }
     }
 
-    /// Create a new proof witness indicating divergence (theorem violation).
     pub fn diverged(fact_count: usize, orderings_tested: u32, violations: u32) -> Self {
         Self {
             fact_count,
@@ -147,30 +63,23 @@ impl AccProofWitness {
         }
     }
 
-    /// Check if this witness demonstrates valid ACC behavior.
     pub fn is_valid(&self) -> bool {
         self.converged && self.causal_violations == 0
     }
 }
 
-/// A fact with its causal dependencies for ACC verification.
 #[derive(Debug, Clone)]
 pub struct CausalFact {
-    /// Unique identifier for this fact
     pub id: FactId,
-    /// IDs of facts this fact depends on
     pub deps: Vec<FactId>,
-    /// Payload data
     pub payload: Vec<u8>,
 }
 
 impl CausalFact {
-    /// Create a new causal fact.
     pub fn new(id: FactId, deps: Vec<FactId>, payload: Vec<u8>) -> Self {
         Self { id, deps, payload }
     }
 
-    /// Create a root fact with no dependencies.
     pub fn root(id: FactId, payload: Vec<u8>) -> Self {
         Self {
             id,
@@ -180,29 +89,21 @@ impl CausalFact {
     }
 }
 
-/// Causal ordering validator for fact sets.
-///
-/// Ensures that facts can only be admitted after their dependencies,
-/// which is the key predicate for the ACC theorem.
 pub struct CausalOrderValidator {
-    /// Set of admitted fact IDs (using a simple Vec for no_std compatibility)
     admitted: Vec<FactId>,
 }
 
 impl CausalOrderValidator {
-    /// Create a new validator with empty frontier.
     pub fn new() -> Self {
         Self {
             admitted: Vec::with_capacity(1024),
         }
     }
 
-    /// Check if a fact's dependencies are all satisfied.
     pub fn can_admit(&self, fact: &CausalFact) -> bool {
         fact.deps.iter().all(|dep| self.admitted.contains(dep))
     }
 
-    /// Admit a fact (must call can_admit first).
     pub fn admit(&mut self, fact_id: FactId) {
         if !self.admitted.contains(&fact_id) {
             self.admitted.push(fact_id);
