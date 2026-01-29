@@ -7,9 +7,9 @@ Fact → Bloom Clock Check → Invariant Apply → Frontier Advance
 40ns end-to-end. 25M causally-ordered ops/sec. Zero consensus.
 ```
 
-Most distributed systems make you choose: strong consistency with millisecond latency, or eventual consistency with weak guarantees. Cuttlefish doesn't ask.
+Distributed systems usually trade consistency for latency. Cuttlefish is a coordination-free state kernel that preserves strict invariants at the speed of your L1 cache.
 
-**The thesis:** Correctness is a property of algebra, not execution order. If your operations commute, you don't need coordination. If they don't, we tell you at admission time—in nanoseconds.
+**Thesis:** Correctness is defined as a property of algebra, not execution order. If your operations commute, you don't need coordination. If they don't, it tells you at admission time in nanoseconds.
 
 ---
 
@@ -24,7 +24,7 @@ Most distributed systems make you choose: strong consistency with millisecond la
 | Durable admission | 5.2 ns | Staged to io_uring, async fsync |
 | WAL hash (200B payload) | 230 ns | 940 MiB/s throughput |
 
-**Comparison:** etcd pays 1-10ms for linearizable writes. CockroachDB pays 1-50ms. We pay 40ns for causal+ consistency.
+**Comparison:** etcd pays 1-10ms for linearizable writes. CockroachDB pays 1-50ms. Cuttlefish pays 40ns for causal+ consistency.
 
 ---
 
@@ -133,7 +133,7 @@ Tiered BLAKE3 hash of state + frontier. Verified on load—corrupt checkpoints a
 | `UniquenessInvariant` | Idempotent set | None |
 | `GGraphInvariant` | Grow-only graph | None |
 
-**The rule:** If `Δ_I(a) ∘ Δ_I(b) = Δ_I(b) ∘ Δ_I(a)`, no coordination required.
+**Rule:** If `Δ_I(a) ∘ Δ_I(b) = Δ_I(b) ∘ Δ_I(a)`, no coordination required.
 
 ---
 
@@ -195,7 +195,7 @@ cargo bench --bench hardening
 cargo bench --features persistence --bench durable_admission
 ```
 
-### Selected Results (AMD Ryzen 9, Linux 6.x)
+### Selected Results (AMD Ryzen 7, Linux 6.x)
 
 ```
 kernel_admit_no_deps      13.0 ns
@@ -228,7 +228,7 @@ wal_hasher/200B          230.0 ns  (940 MiB/s)
 
 ---
 
-## Non-Goals
+## What it is NOT
 
 - SQL or query languages
 - Secondary indexes
@@ -262,4 +262,3 @@ MIT
 ---
 
 *"The fastest distributed system is the one that doesn't distribute."*
-*—But when you must, at least don't pay milliseconds for it.*
