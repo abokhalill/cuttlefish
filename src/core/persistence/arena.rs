@@ -3,6 +3,89 @@
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
+#[repr(C, align(64))]
+struct CachePaddedAtomicU32 {
+    value: AtomicU32,
+    _pad: [u8; 60],
+}
+
+impl CachePaddedAtomicU32 {
+    #[inline(always)]
+    const fn new(v: u32) -> Self {
+        Self {
+            value: AtomicU32::new(v),
+            _pad: [0u8; 60],
+        }
+    }
+
+    #[inline(always)]
+    fn load(&self, order: Ordering) -> u32 {
+        self.value.load(order)
+    }
+
+    #[inline(always)]
+    fn store(&self, val: u32, order: Ordering) {
+        self.value.store(val, order)
+    }
+
+    #[inline(always)]
+    fn fetch_add(&self, val: u32, order: Ordering) -> u32 {
+        self.value.fetch_add(val, order)
+    }
+
+    #[inline(always)]
+    fn fetch_sub(&self, val: u32, order: Ordering) -> u32 {
+        self.value.fetch_sub(val, order)
+    }
+
+    #[inline(always)]
+    fn compare_exchange_weak(
+        &self,
+        current: u32,
+        new: u32,
+        success: Ordering,
+        failure: Ordering,
+    ) -> Result<u32, u32> {
+        self.value.compare_exchange_weak(current, new, success, failure)
+    }
+}
+
+const _: () = {
+    assert!(core::mem::size_of::<CachePaddedAtomicU32>() == 64);
+    assert!(core::mem::align_of::<CachePaddedAtomicU32>() == 64);
+};
+
+#[repr(C, align(64))]
+struct CachePaddedAtomicU64 {
+    value: AtomicU64,
+    _pad: [u8; 56],
+}
+
+impl CachePaddedAtomicU64 {
+    #[inline(always)]
+    const fn new(v: u64) -> Self {
+        Self {
+            value: AtomicU64::new(v),
+            _pad: [0u8; 56],
+        }
+    }
+
+    #[inline(always)]
+    fn load(&self, order: Ordering) -> u64 {
+        self.value.load(order)
+    }
+
+    #[inline(always)]
+    fn fetch_add(&self, val: u64, order: Ordering) -> u64 {
+        self.value.fetch_add(val, order)
+    }
+}
+
+const _: () = {
+    assert!(core::mem::size_of::<CachePaddedAtomicU64>() == 64);
+    assert!(core::mem::align_of::<CachePaddedAtomicU64>() == 64);
+};
+
 pub const REFCOUNT_FREE: u32 = 0;
 
 pub const REFCOUNT_DUAL: u32 = 2;
@@ -97,10 +180,9 @@ pub struct WALArena {
     slots: UnsafeCell<[ArenaSlot; SLOTS_PER_ARENA]>,
     refcounts: [AtomicU32; SLOTS_PER_ARENA],
     free_bitmap: [AtomicU64; 64],
-    alloc_hint: AtomicU32,
-    sequence: AtomicU64,
-    free_count: AtomicU32,
-    _pad: [u8; 44],
+    alloc_hint: CachePaddedAtomicU32,
+    sequence: CachePaddedAtomicU64,
+    free_count: CachePaddedAtomicU32,
 }
 
 const _: () = {
@@ -123,10 +205,9 @@ impl WALArena {
             slots: UnsafeCell::new([ArenaSlot::empty(); SLOTS_PER_ARENA]),
             refcounts,
             free_bitmap,
-            alloc_hint: AtomicU32::new(0),
-            sequence: AtomicU64::new(0),
-            free_count: AtomicU32::new(SLOTS_PER_ARENA as u32),
-            _pad: [0u8; 44],
+            alloc_hint: CachePaddedAtomicU32::new(0),
+            sequence: CachePaddedAtomicU64::new(0),
+            free_count: CachePaddedAtomicU32::new(SLOTS_PER_ARENA as u32),
         }
     }
 
