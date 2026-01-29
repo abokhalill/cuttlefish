@@ -261,23 +261,48 @@ impl PersistenceWorker {
     fn wait_completions(&mut self, frontier: &mut PersistenceFrontier) -> std::io::Result<()> {
         self.ring.submit_and_wait(1)?;
 
-        let cq = self.ring.completion();
-        for cqe in cq {
-            let buf_idx = cqe.user_data() as usize;
-            let result = cqe.result();
+        let mut completed_entries: Vec<PersistenceEntry> = Vec::new();
 
-            if result < 0 {
+        {
+            let cq = self.ring.completion();
+            for cqe in cq {
+                let buf_idx = cqe.user_data() as usize;
+                let result = cqe.result();
+
+                if result < 0 {
+                    self.buffer_pool.release(buf_idx);
+                    return Err(std::io::Error::from_raw_os_error(-result));
+                }
+
+                if let Some(pos) = self.pending_writes.iter().position(|(idx, _)| *idx == buf_idx) {
+                    let (_, entries) = self.pending_writes.remove(pos);
+                    completed_entries.extend(entries);
+                }
+
                 self.buffer_pool.release(buf_idx);
-                return Err(std::io::Error::from_raw_os_error(-result));
+            }
+        }
+
+        if !completed_entries.is_empty() {
+            let fsync_op = opcode::Fsync::new(types::Fd(self.file.as_raw_fd()))
+                .build()
+                .user_data(u64::MAX);
+
+            unsafe {
+                self.ring.submission().push(&fsync_op).map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::Other, "SQ full")
+                })?;
+            }
+            self.ring.submit_and_wait(1)?;
+
+            let cq = self.ring.completion();
+            for cqe in cq {
+                if cqe.result() < 0 {
+                    return Err(std::io::Error::from_raw_os_error(-cqe.result()));
+                }
             }
 
-            // Find and update frontier for this buffer
-            if let Some(pos) = self.pending_writes.iter().position(|(idx, _)| *idx == buf_idx) {
-                let (_, entries) = self.pending_writes.remove(pos);
-                frontier.advance(&entries);
-            }
-
-            self.buffer_pool.release(buf_idx);
+            frontier.advance(&completed_entries);
         }
 
         Ok(())
@@ -469,38 +494,65 @@ impl ArenaPersistenceWorker {
     fn wait_arena_completions(&mut self) -> std::io::Result<()> {
         self.ring.submit_and_wait(1)?;
 
-        let cq = self.ring.completion();
-        for cqe in cq {
-            let buf_idx = cqe.user_data() as usize;
-            let result = cqe.result();
+        let mut completed_slots: Vec<(SlotIndex, [u8; 32])> = Vec::new();
 
-            if result < 0 {
-                // On error, still release slots to avoid leaks
+        {
+            let cq = self.ring.completion();
+            for cqe in cq {
+                let buf_idx = cqe.user_data() as usize;
+                let result = cqe.result();
+
+                if result < 0 {
+                    if let Some(pending) = self.pending_writes[buf_idx].take() {
+                        for i in 0..pending.slot_count {
+                            let _ = self.arena.complete_persistence(pending.slot_indices[i]);
+                        }
+                    }
+                    self.buffer_pool.release(buf_idx);
+                    return Err(std::io::Error::from_raw_os_error(-result));
+                }
+
                 if let Some(pending) = self.pending_writes[buf_idx].take() {
                     for i in 0..pending.slot_count {
-                        let _ = self.arena.complete_persistence(pending.slot_indices[i]);
+                        let slot_idx = pending.slot_indices[i];
+                        if let Ok(header) = self.arena.get_header(slot_idx) {
+                            completed_slots.push((slot_idx, header.fact_id));
+                        } else {
+                            completed_slots.push((slot_idx, [0u8; 32]));
+                        }
                     }
                 }
+
                 self.buffer_pool.release(buf_idx);
-                return Err(std::io::Error::from_raw_os_error(-result));
             }
+        }
 
-            // Success: update frontier and release arena slots
-            if let Some(pending) = self.pending_writes[buf_idx].take() {
-                for i in 0..pending.slot_count {
-                    let slot_idx = pending.slot_indices[i];
-                    
-                    // Read fact_id for frontier update
-                    if let Ok(header) = self.arena.get_header(slot_idx) {
-                        self.frontier.clock.observe(&header.fact_id);
+        if !completed_slots.is_empty() {
+            let fsync_op = opcode::Fsync::new(types::Fd(self.file.as_raw_fd()))
+                .build()
+                .user_data(u64::MAX);
+
+            unsafe {
+                self.ring.submission().push(&fsync_op).map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::Other, "SQ full")
+                })?;
+            }
+            self.ring.submit_and_wait(1)?;
+
+            let cq = self.ring.completion();
+            for cqe in cq {
+                if cqe.result() < 0 {
+                    for (slot_idx, _) in &completed_slots {
+                        let _ = self.arena.complete_persistence(*slot_idx);
                     }
-                    
-                    // Release persistence hold on slot
-                    let _ = self.arena.complete_persistence(slot_idx);
+                    return Err(std::io::Error::from_raw_os_error(-cqe.result()));
                 }
             }
 
-            self.buffer_pool.release(buf_idx);
+            for (slot_idx, fact_id) in completed_slots {
+                self.frontier.clock.observe(&fact_id);
+                let _ = self.arena.complete_persistence(slot_idx);
+            }
         }
 
         Ok(())
