@@ -90,7 +90,7 @@ kernel.admit_raw(&fact_id, &[], &payload).unwrap();
 ## Core Concepts
 
 ### Facts
-Immutable, content-addressed state transitions. Each fact has a 32-byte ID, optional causal dependencies, and a payload. Facts form a DAG—not a chain.
+Immutable, content-addressed state transitions. Each fact has a 32-byte ID, optional causal dependencies, and a payload. Facts form a DAG, not a chain.
 
 ### Invariants
 Algebraic constraints enforced at admission. Pure functions: `Δ_I(payload, state) → Result<(), Error>`. O(1), allocation-free, branchless where possible.
@@ -99,10 +99,10 @@ Algebraic constraints enforced at admission. Pure functions: `Δ_I(payload, stat
 512-bit Bloom filter vector clocks. Probabilistic but fast (~700ps dominance check). When saturation exceeds 40%, kernels escalate to precise tracking.
 
 ### StateCell
-64-byte cache-aligned POD. Bit-for-bit deterministic. No pointers, no heap, no surprises.
+64-byte cache-aligned POD. Bit-for-bit deterministic. No pointers and no heap.
 
 ### Checkpoints
-Tiered BLAKE3 hash of state + frontier. Verified on load—corrupt checkpoints are rejected, not silently applied.
+Tiered BLAKE3 hash of state + frontier. Verified on load—corrupt checkpoints are rejected.
 
 ---
 
@@ -167,19 +167,6 @@ cuttlefish = { version = "0.1", features = ["networking"] }
 ```
 
 Gossip-based replication via `NetworkingKernel`. Facts are broadcast to peers; causality is enforced on receipt. Convergence is guaranteed for commutative invariants.
-
----
-
-## Hardening
-
-Recent security hardening (v0.1.1+):
-
-| Fix | Description |
-|-----|-------------|
-| **Memory ordering** | Release/Acquire fences on arena slot state transitions |
-| **Durability** | fsync via io_uring before advancing persistence frontier |
-| **Checkpoint integrity** | Tiered BLAKE3 hash verified on load; corrupt checkpoints rejected |
-| **Cache-line isolation** | Hot atomics padded to 64 bytes to prevent false sharing |
 
 ---
 
