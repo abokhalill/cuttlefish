@@ -496,6 +496,7 @@ impl CheckpointManager {
     }
 
     /// Read the latest checkpoint from disk.
+    /// Returns None if checkpoint is missing, corrupt, or fails integrity verification.
     pub fn read_checkpoint(&self) -> std::io::Result<Option<(CheckpointHeader, StateCell, CausalClock)>> {
         use std::io::Read;
 
@@ -505,7 +506,6 @@ impl CheckpointManager {
             Err(e) => return Err(e),
         };
 
-        // Read header
         let mut header_buf = [0u8; CheckpointHeader::SIZE];
         file.read_exact(&mut header_buf)?;
 
@@ -514,19 +514,39 @@ impl CheckpointManager {
             None => return Ok(None),
         };
 
-        // Read state cell
         let mut state_buf = [0u8; 64];
         file.read_exact(&mut state_buf)?;
         let mut state = StateCell::new();
         state.as_slice_mut().copy_from_slice(&state_buf);
 
-        // Read clock
         let mut clock_buf = [0u8; 64];
         file.read_exact(&mut clock_buf)?;
         let clock = match CausalClock::read_from_bytes(&clock_buf) {
             Ok(c) => c,
             Err(_) => return Ok(None),
         };
+
+        let mut frontier_facts: Frontier = Frontier::new();
+        let mut fact_buf = [0u8; 32];
+        while file.read_exact(&mut fact_buf).is_ok() {
+            if frontier_facts.len() < frontier_facts.capacity() {
+                frontier_facts.push(fact_buf);
+            }
+        }
+
+        let frontier_state = FrontierState {
+            clock,
+            frontier: frontier_facts,
+        };
+        let computed_hash = Checkpoint::compute_tiered_hash(&state, &frontier_state);
+
+        let mut diff = 0u8;
+        for i in 0..32 {
+            diff |= computed_hash[i] ^ header.tiered_hash[i];
+        }
+        if diff != 0 {
+            return Ok(None);
+        }
 
         Ok(Some((header, state, clock)))
     }
