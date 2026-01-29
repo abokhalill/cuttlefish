@@ -62,6 +62,9 @@ required-features = ["networking"]
 name = "two_lane"
 harness = false
 
+[[bench]]
+name = "hardening"
+harness = false
 
 [[bench]]
 name = "comparative"
