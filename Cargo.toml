@@ -1,5 +1,5 @@
 [package]
-name = "cuttlefish"
+name = "ctfs"
 version = "0.1.0"
 edition = "2021"
 description = "Causal consistency at nanosecond latency. Algebraic invariants without coordination."
