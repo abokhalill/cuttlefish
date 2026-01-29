@@ -2,8 +2,14 @@
 name = "cuttlefish"
 version = "0.1.0"
 edition = "2021"
-description = "Invariant-centric, causally ordered state kernel"
+description = "Causal consistency at nanosecond latency. Algebraic invariants without coordination."
 license = "MIT"
+repository = "https://github.com/abokhalill/cuttlefish"
+documentation = "https://docs.rs/cuttlefish"
+readme = "README.md"
+keywords = ["distributed-systems", "causality", "crdt", "invariants", "consensus-free"]
+categories = ["concurrency", "data-structures", "algorithms"]
+authors = ["abokhalill"]
 
 [lib]
 path = "src/lib.rs"
