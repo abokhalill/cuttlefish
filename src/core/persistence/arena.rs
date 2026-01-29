@@ -21,14 +21,13 @@ pub type SlotIndex = u32;
 
 pub const INVALID_SLOT: SlotIndex = u32::MAX;
 
-#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct SlotHeader {
     pub fact_id: [u8; 32],
     pub payload_len: u32,
     pub sequence: u64,
     pub refcount: u32,
-    pub state: u32,
+    pub state: AtomicU32,
 }
 
 const _: () = {
@@ -37,13 +36,13 @@ const _: () = {
 
 impl SlotHeader {
     #[inline(always)]
-    pub const fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             fact_id: [0u8; 32],
             payload_len: 0,
             sequence: 0,
             refcount: 0,
-            state: 0,
+            state: AtomicU32::new(SlotState::Free as u32),
         }
     }
 }
@@ -77,7 +76,7 @@ const _: () = {
 
 impl ArenaSlot {
     #[inline(always)]
-    pub const fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             header: SlotHeader::empty(),
             payload: [0u8; PAYLOAD_CAPACITY],
@@ -176,12 +175,11 @@ impl WALArena {
                         // Set initial refcount atomically.
                         self.refcounts[slot_idx as usize].store(initial_refcount, Ordering::Release);
 
-                        // Mark slot as writing.
                         unsafe {
                             let slot = &mut (*self.slots.get())[slot_idx as usize];
-                            slot.header.state = SlotState::Writing as u32;
                             slot.header.sequence = self.sequence.fetch_add(1, Ordering::Relaxed);
-                            slot.header.refcount = initial_refcount; // Mirror for debugging
+                            slot.header.refcount = initial_refcount;
+                            slot.header.state.store(SlotState::Writing as u32, Ordering::Release);
                         }
 
                         return Ok(slot_idx);
@@ -272,8 +270,11 @@ impl WALArena {
     fn release_slot_internal(&self, slot_idx: SlotIndex) {
         unsafe {
             let slot = &mut (*self.slots.get())[slot_idx as usize];
-            // Reset slot header.
-            slot.header = SlotHeader::empty();
+            slot.header.fact_id = [0u8; 32];
+            slot.header.payload_len = 0;
+            slot.header.sequence = 0;
+            slot.header.refcount = 0;
+            slot.header.state.store(SlotState::Free as u32, Ordering::Release);
         }
 
         // Mark as free in bitmap.
@@ -305,7 +306,7 @@ impl WALArena {
         unsafe {
             let slot = &mut (*self.slots.get())[slot_idx as usize];
 
-            if slot.header.state != SlotState::Writing as u32 {
+            if slot.header.state.load(Ordering::Acquire) != SlotState::Writing as u32 {
                 return Err(ArenaError::InvalidState);
             }
 
@@ -313,8 +314,7 @@ impl WALArena {
             slot.header.payload_len = payload.len() as u32;
             slot.payload[..payload.len()].copy_from_slice(payload);
 
-            // Commit the slot.
-            slot.header.state = SlotState::Committed as u32;
+            slot.header.state.store(SlotState::Committed as u32, Ordering::Release);
         }
 
         Ok(())
@@ -341,8 +341,7 @@ impl WALArena {
         unsafe {
             let slot = &(*self.slots.get())[slot_idx as usize];
 
-            if slot.header.state < SlotState::Committed as u32 {
-                // Slot not ready — undo refcount increment
+            if slot.header.state.load(Ordering::Acquire) < SlotState::Committed as u32 {
                 self.refcounts[slot_idx as usize].fetch_sub(1, Ordering::Release);
                 return Err(ArenaError::InvalidState);
             }
@@ -383,7 +382,7 @@ impl WALArena {
 
         unsafe {
             let slot = &mut (*self.slots.get())[slot_idx as usize];
-            slot.header.state = SlotState::Persisted as u32;
+            slot.header.state.store(SlotState::Persisted as u32, Ordering::Release);
         }
 
         Ok(())
@@ -424,7 +423,7 @@ impl WALArena {
 
         unsafe {
             let slot = &mut (*self.slots.get())[slot_idx as usize];
-            slot.header.state = SlotState::Persisted as u32;
+            slot.header.state.store(SlotState::Persisted as u32, Ordering::Release);
         }
 
         self.decrement_refcount(slot_idx)
@@ -483,13 +482,13 @@ mod tests {
         assert_eq!(header.payload_len, 0);
         assert_eq!(header.sequence, 0);
         assert_eq!(header.refcount, 0);
-        assert_eq!(header.state, 0);
+        assert_eq!(header.state.load(Ordering::Relaxed), SlotState::Free as u32);
     }
 
     #[test]
     fn test_arena_slot_empty() {
         let slot = ArenaSlot::empty();
-        assert!(slot.header.state == SlotState::Free as u32);
+        assert_eq!(slot.header.state.load(Ordering::Relaxed), SlotState::Free as u32);
         assert_eq!(slot.payload, [0u8; PAYLOAD_CAPACITY]);
     }
 
