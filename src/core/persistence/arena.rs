@@ -145,11 +145,19 @@ pub enum SlotState {
     Persisted = 3,
 }
 
-#[derive(Debug, Clone, Copy)]
 #[repr(C, align(64))]
 pub struct ArenaSlot {
     pub header: SlotHeader,
     pub payload: [u8; PAYLOAD_CAPACITY],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HeaderSnapshot {
+    pub fact_id: [u8; 32],
+    pub payload_len: u32,
+    pub sequence: u64,
+    pub refcount: u32,
+    pub state: u32,
 }
 
 const _: () = {
@@ -202,7 +210,7 @@ impl WALArena {
         let refcounts: [AtomicU32; SLOTS_PER_ARENA] = unsafe { core::mem::zeroed() };
 
         Self {
-            slots: UnsafeCell::new([ArenaSlot::empty(); SLOTS_PER_ARENA]),
+            slots: UnsafeCell::new(unsafe { core::mem::zeroed() }),
             refcounts,
             free_bitmap,
             alloc_hint: CachePaddedAtomicU32::new(0),
@@ -432,16 +440,22 @@ impl WALArena {
         }
     }
 
-    /// Get slot header (for SPSC entry construction).
+    /// Get slot header snapshot (for SPSC entry construction).
     #[inline]
-    pub fn get_header(&self, slot_idx: SlotIndex) -> Result<SlotHeader, ArenaError> {
+    pub fn get_header(&self, slot_idx: SlotIndex) -> Result<HeaderSnapshot, ArenaError> {
         if slot_idx as usize >= SLOTS_PER_ARENA {
             return Err(ArenaError::InvalidSlot);
         }
 
         unsafe {
             let slot = &(*self.slots.get())[slot_idx as usize];
-            Ok(slot.header)
+            Ok(HeaderSnapshot {
+                fact_id: slot.header.fact_id,
+                payload_len: slot.header.payload_len,
+                sequence: slot.header.sequence,
+                refcount: slot.header.refcount,
+                state: slot.header.state.load(Ordering::Acquire),
+            })
         }
     }
 
