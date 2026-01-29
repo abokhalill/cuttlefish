@@ -32,12 +32,13 @@ Distributed systems usually trade consistency for latency. Cuttlefish is a coord
 
 ```toml
 [dependencies]
-cuttlefish = "0.1"
+ctfs = "0.1"
+zerocopy = "0.8"
 ```
 
 ```rust
-use cuttlefish::prelude::*;
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::prelude::*;
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 // Initialize: balance=0, bounds=[MIN, MAX]
@@ -143,7 +144,7 @@ Linux-only. Requires `io_uring` (kernel 5.1+).
 
 ```toml
 [dependencies]
-cuttlefish = { version = "0.1", features = ["persistence"] }
+ctfs = { version = "0.1", features = ["persistence"] }
 ```
 
 ### Components
@@ -163,7 +164,7 @@ Facts are durable when `persistence_frontier.dominates(fact_clock)`. The frontie
 
 ```toml
 [dependencies]
-cuttlefish = { version = "0.1", features = ["networking"] }
+ctfs = { version = "0.1", features = ["networking"] }
 ```
 
 Gossip-based replication via `NetworkingKernel`. Facts are broadcast to peers; causality is enforced on receipt. Convergence is guaranteed for commutative invariants.
