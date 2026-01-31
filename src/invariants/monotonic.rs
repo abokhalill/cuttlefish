@@ -235,10 +235,6 @@ impl Invariant for LWWInvariant {
     }
 }
 
-// ============================================================================
-// Bounded Semilattice: Lattice with Capacity Limit
-// ============================================================================
-
 /// State for bounded semilattice with capacity tracking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]

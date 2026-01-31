@@ -22,6 +22,7 @@ use tokio::sync::mpsc;
 use tokio::time::interval;
 
 use crate::core::topology::{CausalClock, FactId};
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 use crate::core::persistence::WALArena;
 
 use super::protocol::{NetworkMessage, WireHeader};
@@ -296,6 +297,9 @@ impl WorkerInner {
 /// - Reads payload directly from WALArena using slot index
 /// - Uses fixed-size `SendBuffer` to avoid heap allocation
 /// - Calls `arena.complete_broadcast()` after transmission
+///
+/// Only available when both `persistence` and `networking` features are enabled on Linux.
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 pub struct ZeroCopyNetworkWorker {
     config: NetworkConfig,
     arena: Arc<WALArena>,
@@ -305,6 +309,7 @@ pub struct ZeroCopyNetworkWorker {
     peer_connections: HashMap<PeerAddr, TcpStream>,
 }
 
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 impl ZeroCopyNetworkWorker {
     /// Create a new zero-copy network worker.
     pub fn new(
@@ -402,11 +407,15 @@ impl ZeroCopyNetworkWorker {
 }
 
 /// Handle for spawning and communicating with ZeroCopyNetworkWorker.
+///
+/// Only available when both `persistence` and `networking` features are enabled on Linux.
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 pub struct ZeroCopyNetworkHandle {
     broadcast_tx: mpsc::Sender<ZeroCopyBroadcastEntry>,
     event_rx: mpsc::Receiver<NetworkEvent>,
 }
 
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 impl ZeroCopyNetworkHandle {
     /// Spawn a zero-copy network worker.
     pub fn spawn(
@@ -479,6 +488,9 @@ const _: () = {
 
 /// Zero-copy broadcast entry using arena slot index.
 /// The network worker reads directly from WALArena using this index.
+///
+/// Only available when both `persistence` and `networking` features are enabled on Linux.
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct ZeroCopyBroadcastEntry {
@@ -490,6 +502,7 @@ pub struct ZeroCopyBroadcastEntry {
     pub payload_len: u32,
 }
 
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 impl ZeroCopyBroadcastEntry {
     pub const fn empty() -> Self {
         Self {
@@ -505,6 +518,7 @@ impl ZeroCopyBroadcastEntry {
     }
 }
 
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 const _: () = {
     assert!(core::mem::size_of::<ZeroCopyBroadcastEntry>() == 40);
 };
@@ -576,6 +590,9 @@ impl BroadcastFrame {
 }
 
 /// Zero-copy broadcast command using arena reference.
+///
+/// Only available when both `persistence` and `networking` features are enabled on Linux.
+#[cfg(all(feature = "persistence", target_os = "linux"))]
 #[derive(Debug, Clone, Copy)]
 pub enum ZeroCopyCommand {
     /// Broadcast fact using arena slot (zero-copy).

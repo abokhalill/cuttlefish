@@ -16,6 +16,11 @@ pub use protocol::{
 };
 pub use worker::{
     BroadcastEntry, BroadcastFrame, NetworkConfig, NetworkWorker, PeerAddr,
-    SendBuffer, ZeroCopyBroadcastEntry, ZeroCopyCommand,
+    SendBuffer,
+};
+
+#[cfg(all(feature = "persistence", target_os = "linux"))]
+pub use worker::{
+    ZeroCopyBroadcastEntry, ZeroCopyCommand,
     ZeroCopyNetworkWorker, ZeroCopyNetworkHandle,
 };

@@ -273,16 +273,9 @@ impl Invariant for GGraphInvariant {
     }
 }
 
-// ============================================================================
-// Reachability Invariant
-// ============================================================================
 
 /// ReachabilityInvariant: Maintains transitive closure for reachability queries.
 ///
-/// # Properties
-/// - **Algebraic Class**: Lattice (reachability only grows)
-/// - **Coordination**: None required
-/// - **Convergence**: Guaranteed
 ///
 /// # Implementation
 /// Maintains a separate reachability matrix that is the transitive closure
@@ -290,7 +283,7 @@ impl Invariant for GGraphInvariant {
 ///
 /// # Constraint
 /// Can enforce that certain vertices must remain unreachable from others
-/// (e.g., for access control).
+/// (eg. for access control).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReachabilityInvariant {
     /// If set, adding an edge that would make `forbidden_target` reachable
