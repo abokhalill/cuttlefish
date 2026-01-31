@@ -88,6 +88,79 @@ kernel.admit_raw(&fact_id, &[], &payload).unwrap();
 
 ---
 
+## Examples
+
+Run any example with `cargo run --example <name>`:
+
+```bash
+cargo run --example basic_kernel      # Basic fact admission and causality
+cargo run --example multi_tenant      # Isolated causal domains per tenant
+cargo run --example custom_invariant  # Implement your own invariant
+cargo run --example two_lane_kernel   # BFVC + ExactCausalIndex
+cargo run --example escalating_kernel # Auto-switch Bloom → Precise mode
+cargo run --example graph_invariant   # Grow-only graph with constraints
+```
+
+### Basic Kernel
+
+```rust
+use ctfs::core::{Kernel, StateCell};
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+
+// Initialize state
+let state = ConservationState::new(1000, 0, 1_000_000);
+let mut cell = StateCell::new();
+cell.as_slice_mut().copy_from_slice(state.as_bytes());
+
+let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), cell);
+
+// Admit facts
+let fact1: FactId = [1u8; 32];
+kernel.admit_raw(&fact1, &[], &500i128.to_le_bytes()).unwrap();
+
+// Admit with causal dependency
+let fact2: FactId = [2u8; 32];
+kernel.admit_raw(&fact2, &[fact1], &(-200i128).to_le_bytes()).unwrap();
+```
+
+### Multi-Tenant Isolation
+
+```rust
+use ctfs::core::TenantKernel;
+
+let mut kernel = TenantKernel::new(TotalSupplyInvariant::new());
+
+// Each tenant gets isolated causal state
+kernel.register_tenant(1, alice_state).unwrap();
+kernel.register_tenant(2, bob_state).unwrap();
+
+// Cross-tenant dependencies are rejected
+kernel.admit(1, &fact, &[bob_fact], &payload); // Error: CausalityViolation
+```
+
+### Custom Invariant
+
+```rust
+use ctfs::core::{Invariant, InvariantError};
+
+struct MonotonicInvariant;
+
+impl Invariant for MonotonicInvariant {
+    fn apply(&self, payload: &[u8], state: &mut [u8]) -> Result<(), InvariantError> {
+        let proposed = u64::from_le_bytes(payload[0..8].try_into().unwrap());
+        let current = u64::from_le_bytes(state[0..8].try_into().unwrap());
+        
+        if proposed < current {
+            return Err(InvariantError::Underflow);
+        }
+        state[0..8].copy_from_slice(&proposed.to_le_bytes());
+        Ok(())
+    }
+}
+```
+
+---
+
 ## Core Concepts
 
 ### Facts
@@ -114,11 +187,29 @@ Tiered BLAKE3 hash of state + frontier. Verified on load—corrupt checkpoints a
 | `Kernel<I>` | BFVC only | None | Embedded, single-node |
 | `TwoLaneKernel<I>` | BFVC + ExactIndex | None | Production, precise deps |
 | `EscalatingKernel<I>` | Auto BFVC→Precise | None | Long-running, adaptive |
+| `TenantKernel<I>` | Per-tenant BFVC+Exact | None | Multi-tenant isolation |
 | `DurableKernel<I>` | BFVC | io_uring WAL | Crash-safe single-node |
 | `TwoLaneDurableKernel<I>` | BFVC + ExactIndex | io_uring + Arena | Production crash-safe |
 | `NetworkingKernel<I>` | BFVC | Broadcast buffer | Gossip replication |
 | `MultiKernel` | BFVC | None | Multiple invariants |
 | `DualKernel<I1, I2>` | BFVC | None | Two invariants, zero overhead |
+
+### Async Durability (New)
+
+`TwoLaneDurableKernel` now supports non-blocking durability via `DurableHandle`:
+
+```rust
+// Non-blocking: returns immediately with a handle
+let handle = kernel.admit_async(&fact_id, &deps, &payload)?;
+
+// Poll for durability (or use in async context)
+while !handle.is_durable() {
+    // Do other work...
+}
+
+// Or block if needed
+handle.spin_wait();
+```
 
 ---
 
