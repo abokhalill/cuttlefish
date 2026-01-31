@@ -490,11 +490,14 @@ impl ArenaPersistenceWorker {
         Ok(())
     }
 
-    /// Wait for io_uring completions and release arena slots.
+    /// Wait for io_uring completions and release arena slots. Zero-heap path.
     fn wait_arena_completions(&mut self) -> std::io::Result<()> {
         self.ring.submit_and_wait(1)?;
 
-        let mut completed_slots: Vec<(SlotIndex, [u8; 32])> = Vec::new();
+        // Fixed-size completion buffer (no heap allocation)
+        const MAX_COMPLETIONS: usize = 64;
+        let mut completed_slots: [(SlotIndex, [u8; 32]); MAX_COMPLETIONS] = [(0, [0u8; 32]); MAX_COMPLETIONS];
+        let mut completed_count = 0usize;
 
         {
             let cq = self.ring.completion();
@@ -514,12 +517,15 @@ impl ArenaPersistenceWorker {
 
                 if let Some(pending) = self.pending_writes[buf_idx].take() {
                     for i in 0..pending.slot_count {
-                        let slot_idx = pending.slot_indices[i];
-                        if let Ok(header) = self.arena.get_header(slot_idx) {
-                            completed_slots.push((slot_idx, header.fact_id));
-                        } else {
-                            completed_slots.push((slot_idx, [0u8; 32]));
+                        if completed_count >= MAX_COMPLETIONS {
+                            break;
                         }
+                        let slot_idx = pending.slot_indices[i];
+                        let fact_id = self.arena.get_header(slot_idx)
+                            .map(|h| h.fact_id)
+                            .unwrap_or([0u8; 32]);
+                        completed_slots[completed_count] = (slot_idx, fact_id);
+                        completed_count += 1;
                     }
                 }
 
@@ -527,7 +533,7 @@ impl ArenaPersistenceWorker {
             }
         }
 
-        if !completed_slots.is_empty() {
+        if completed_count > 0 {
             let fsync_op = opcode::Fsync::new(types::Fd(self.file.as_raw_fd()))
                 .build()
                 .user_data(u64::MAX);
@@ -542,14 +548,15 @@ impl ArenaPersistenceWorker {
             let cq = self.ring.completion();
             for cqe in cq {
                 if cqe.result() < 0 {
-                    for (slot_idx, _) in &completed_slots {
-                        let _ = self.arena.complete_persistence(*slot_idx);
+                    for i in 0..completed_count {
+                        let _ = self.arena.complete_persistence(completed_slots[i].0);
                     }
                     return Err(std::io::Error::from_raw_os_error(-cqe.result()));
                 }
             }
 
-            for (slot_idx, fact_id) in completed_slots {
+            for i in 0..completed_count {
+                let (slot_idx, fact_id) = completed_slots[i];
                 self.frontier.clock.observe(&fact_id);
                 let _ = self.arena.complete_persistence(slot_idx);
             }

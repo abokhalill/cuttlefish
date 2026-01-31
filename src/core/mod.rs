@@ -16,7 +16,10 @@ pub use fact::{Fact, FactHeader};
 pub use frontier::{Frontier, FrontierState, MAX_FRONTIER_WIDTH};
 pub use horizon::{Horizon, PruningPolicy};
 pub use invariant::{Invariant, InvariantError};
-pub use kernel::{AdmitError, Kernel, ReAnchorError, TenantDomain, TenantId, TenantKernel, MAX_TENANTS};
+pub use kernel::{AdmitError, DurableStatus, Kernel, ReAnchorError, TenantDomain, TenantId, TenantKernel, MAX_TENANTS};
+
+#[cfg(all(feature = "persistence", target_os = "linux"))]
+pub use kernel::{DurableHandle, TwoLaneDurableKernel};
 pub use state::StateCell;
 pub use topology::{CausalClock, FactId};
 pub use view::View;

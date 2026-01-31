@@ -32,6 +32,13 @@ pub enum AckMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
+pub enum DurableStatus {
+    Pending = 0,
+    Durable = 1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum CausalMode {
     Fast = 0,
     Precise = 1,
@@ -296,7 +303,7 @@ impl<I: Invariant> TwoLaneKernel<I> {
 pub use durable::DurableKernel;
 
 #[cfg(all(feature = "persistence", target_os = "linux"))]
-pub use two_lane_durable::TwoLaneDurableKernel;
+pub use two_lane_durable::{DurableHandle, TwoLaneDurableKernel};
 
 #[cfg(all(feature = "persistence", target_os = "linux"))]
 mod two_lane_durable {
@@ -304,6 +311,47 @@ mod two_lane_durable {
     use crate::core::persistence::{
         ArenaError, PersistenceEntry, PersistenceFrontier, SlotIndex, SPSCProducer, WALArena,
     };
+
+    /// Handle for async durability checking. Replaces spin-loop blocking.
+    #[derive(Clone, Copy)]
+    pub struct DurableHandle<'a> {
+        fact_id: FactId,
+        slot_idx: SlotIndex,
+        frontier: &'a PersistenceFrontier,
+    }
+
+    impl<'a> DurableHandle<'a> {
+        #[inline(always)]
+        pub fn poll(&self) -> DurableStatus {
+            if self.frontier.clock().might_contain(&self.fact_id) {
+                DurableStatus::Durable
+            } else {
+                DurableStatus::Pending
+            }
+        }
+
+        #[inline(always)]
+        pub fn is_durable(&self) -> bool {
+            self.poll() == DurableStatus::Durable
+        }
+
+        #[inline]
+        pub fn spin_wait(&self) {
+            while !self.is_durable() {
+                core::hint::spin_loop();
+            }
+        }
+
+        #[inline(always)]
+        pub fn fact_id(&self) -> &FactId {
+            &self.fact_id
+        }
+
+        #[inline(always)]
+        pub fn slot_idx(&self) -> SlotIndex {
+            self.slot_idx
+        }
+    }
 
     pub struct TwoLaneDurableKernel<'a, I: Invariant, const N: usize = 4096> {
         pub frontier: FrontierState,
@@ -422,6 +470,69 @@ mod two_lane_durable {
             }
 
             Ok(slot_idx)
+        }
+
+        /// Non-blocking durable admission. Returns handle for async durability polling.
+        #[inline]
+        pub fn admit_async(
+            &mut self,
+            fact_id: &FactId,
+            deps: &[FactId],
+            payload: &[u8],
+        ) -> Result<DurableHandle<'a>, AdmitError> {
+            let slot_idx = self.arena
+                .acquire_slot()
+                .map_err(|e| match e {
+                    ArenaError::Full => AdmitError::ArenaFull,
+                    _ => AdmitError::MalformedFact,
+                })?;
+
+            if let Err(e) = self.arena.write_slot(slot_idx, fact_id, payload) {
+                let _ = self.arena.release_slot(slot_idx);
+                return Err(match e {
+                    ArenaError::PayloadTooLarge => AdmitError::PayloadTooLarge,
+                    _ => AdmitError::MalformedFact,
+                });
+            }
+
+            if !deps.is_empty() {
+                let deps_clock = build_deps_clock(deps);
+                if !check_dominance(&self.frontier.clock, &deps_clock) {
+                    let _ = self.arena.release_slot(slot_idx);
+                    return Err(AdmitError::CausalityViolation);
+                }
+                if self.exact_index.contains_all_simd(deps).is_err() {
+                    let _ = self.arena.release_slot(slot_idx);
+                    return Err(AdmitError::CausalHorizonExceeded);
+                }
+            }
+
+            if self.invariant.apply(payload, self.state.as_bytes_mut()).is_err() {
+                let _ = self.arena.release_slot(slot_idx);
+                return Err(AdmitError::InvariantViolation);
+            }
+
+            self.frontier.advance(*fact_id);
+            self.exact_index.observe(fact_id);
+
+            let header = self.arena.get_header(slot_idx).unwrap();
+            let entry = PersistenceEntry {
+                fact_id: *fact_id,
+                data_ptr: self.arena.slot_ptr(slot_idx) as usize,
+                data_len: header.payload_len,
+                sequence: header.sequence,
+            };
+
+            if self.producer.try_push(entry).is_err() {
+                let _ = self.arena.release_slot(slot_idx);
+                return Err(AdmitError::BufferFull);
+            }
+
+            Ok(DurableHandle {
+                fact_id: *fact_id,
+                slot_idx,
+                frontier: self.persistence_frontier,
+            })
         }
 
         #[inline]
