@@ -1,3 +1,5 @@
+//! The guts. Kernels, clocks, state cells, persistence.
+
 pub mod checkpoint;
 pub mod fact;
 pub mod frontier;

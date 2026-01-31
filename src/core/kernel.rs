@@ -1,4 +1,10 @@
 //! Fact admission. Causality check → invariant apply → frontier advance.
+//!
+//! Pick your kernel based on your needs:
+//! - [`Kernel`]: Bloom filter only. Fast, probabilistic.
+//! - [`TwoLaneKernel`]: Bloom + Robin Hood exact index. Production-grade.
+//! - [`EscalatingKernel`]: Auto-switches at 40% Bloom saturation.
+//! - [`TenantKernel`]: Isolated causal domains per tenant. No cross-contamination.
 
 use super::checkpoint::{Checkpoint, CheckpointError};
 use super::fact::Fact;
@@ -8,39 +14,58 @@ use super::state::{StateCell, STATE_CELL_SIZE};
 use super::topology::{CausalClock, FactId, PreciseClock, ESCALATION_THRESHOLD};
 use super::view::View;
 
+/// Admission failed. Check the variant for why.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AdmitError {
+    /// Dependency not in causal history.
     CausalityViolation = 1,
+    /// Invariant rejected the payload.
     InvariantViolation = 2,
+    /// Couldn't parse the fact.
     MalformedFact = 3,
+    /// Bloom saturated, need precise deps.
     PreciseDepsRequired = 4,
     #[cfg(all(feature = "persistence", target_os = "linux"))]
+    /// WAL buffer full. Back off.
     BufferFull = 5,
+    /// Dependency too old, evicted from index.
     CausalHorizonExceeded = 6,
+    /// No free slots in WAL arena.
     ArenaFull = 7,
+    /// Payload exceeds slot size.
     PayloadTooLarge = 8,
 }
 
+/// When do you want your ACK?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AckMode {
+    /// In-memory only. Fast, volatile.
     Volatile = 0,
+    /// Queued to WAL. Might lose on crash.
     WALSubmitted = 1,
+    /// fsync'd. Survives power loss.
     Durable = 2,
 }
 
+/// Poll this to check if your fact hit disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DurableStatus {
+    /// Still in flight.
     Pending = 0,
+    /// On disk. You're safe.
     Durable = 1,
 }
 
+/// Bloom (fast, probabilistic) or Precise (exact, slower).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CausalMode {
+    /// 512-bit Bloom filter. O(1) but false positives possible.
     Fast = 0,
+    /// Robin Hood hash table. Exact but bounded horizon.
     Precise = 1,
 }
 
@@ -51,6 +76,9 @@ impl From<InvariantError> for AdmitError {
     }
 }
 
+/// The basic kernel. Bloom filter causality, single invariant.
+///
+/// 13ns admission with no deps. 40ns with deps. Good enough for most cases.
 pub struct Kernel<I: Invariant> {
     pub frontier: FrontierState,
     pub state: StateCell,

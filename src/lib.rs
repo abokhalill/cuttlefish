@@ -1,3 +1,8 @@
+//! Causal consistency at 40ns. Algebraic invariants without coordination.
+//!
+//! Commutative ops don't need consensus. Non-commutative ops fail fast at admission.
+//! pretty much the entire the entire trick.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(unsafe_op_in_unsafe_fn)]
 

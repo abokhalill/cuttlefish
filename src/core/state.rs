@@ -1,9 +1,13 @@
-//! StateCell: 64-byte cache-aligned POD container for invariant state.
+//! StateCell: 64-byte cache-aligned POD. No pointers, no heap.
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
+/// One cache line. Fits in L1.
 pub const STATE_CELL_SIZE: usize = 64;
 
+/// 64-byte state container. Cache-line aligned, zerocopy-compatible.
+///
+/// Cast to your state struct with `cast_ref()`. Keep it POD.
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(64))]
 pub struct StateCell {

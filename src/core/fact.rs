@@ -1,5 +1,5 @@
 //! Fact: immutable, content-addressed state transition record.
-//! Layout: [FactHeader:64][deps:N*32][payload:M]
+//! Layout: `[FactHeader:64][deps:N*32][payload:M]`
 
 use super::topology::FactId;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
