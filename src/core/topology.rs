@@ -315,7 +315,7 @@ pub struct ExactCausalIndex {
 const _: () = { assert!(core::mem::align_of::<ExactCausalIndex>() == 64); };
 
 impl ExactCausalIndex {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             slots: [IndexSlot::empty(); EXACT_INDEX_CAPACITY],
             count: 0,

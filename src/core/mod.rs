@@ -16,7 +16,7 @@ pub use fact::{Fact, FactHeader};
 pub use frontier::{Frontier, FrontierState, MAX_FRONTIER_WIDTH};
 pub use horizon::{Horizon, PruningPolicy};
 pub use invariant::{Invariant, InvariantError};
-pub use kernel::{AdmitError, Kernel, ReAnchorError};
+pub use kernel::{AdmitError, Kernel, ReAnchorError, TenantDomain, TenantId, TenantKernel, MAX_TENANTS};
 pub use state::StateCell;
 pub use topology::{CausalClock, FactId};
 pub use view::View;

@@ -931,6 +931,9 @@ impl<I: Invariant> EscalatingKernel<I> {
 }
 
 pub const MAX_INVARIANTS: usize = 8;
+pub const MAX_TENANTS: usize = 16;
+
+pub type TenantId = u16;
 
 pub type InvariantFn = fn(payload: &[u8], state: &mut [u8]) -> Result<(), InvariantError>;
 
@@ -1095,6 +1098,137 @@ impl<I1: Invariant + Copy, I2: Invariant + Copy> DualKernel<I1, I2> {
     }
 }
 
+/// Per-tenant causal domain. Isolated FrontierState + ExactCausalIndex.
+#[repr(C, align(64))]
+pub struct TenantDomain {
+    pub frontier: FrontierState,
+    pub exact_index: ExactCausalIndex,
+    pub tenant_id: TenantId,
+    pub active: bool,
+    _pad: [u8; 44],
+}
+
+impl TenantDomain {
+    #[inline(always)]
+    pub const fn empty() -> Self {
+        Self {
+            frontier: FrontierState::new(),
+            exact_index: ExactCausalIndex::new(),
+            tenant_id: 0,
+            active: false,
+            _pad: [0u8; 44],
+        }
+    }
+
+    #[inline(always)]
+    pub fn init(&mut self, tenant_id: TenantId) {
+        self.frontier = FrontierState::new();
+        self.exact_index = ExactCausalIndex::new();
+        self.tenant_id = tenant_id;
+        self.active = true;
+    }
+
+    #[inline(always)]
+    pub fn saturation(&self) -> f32 {
+        self.frontier.clock.saturation()
+    }
+}
+
+/// Multi-tenant kernel with isolated causal domains per tenant.
+pub struct TenantKernel<I: Invariant> {
+    pub domains: [TenantDomain; MAX_TENANTS],
+    pub states: [StateCell; MAX_TENANTS],
+    pub invariant: I,
+    pub tenant_count: usize,
+}
+
+impl<I: Invariant + Clone> TenantKernel<I> {
+    pub fn new(invariant: I) -> Self {
+        const EMPTY_DOMAIN: TenantDomain = TenantDomain::empty();
+        Self {
+            domains: [EMPTY_DOMAIN; MAX_TENANTS],
+            states: [StateCell::new(); MAX_TENANTS],
+            invariant,
+            tenant_count: 0,
+        }
+    }
+
+    #[inline]
+    pub fn register_tenant(&mut self, tenant_id: TenantId, initial_state: StateCell) -> Option<usize> {
+        if self.tenant_count >= MAX_TENANTS {
+            return None;
+        }
+        let idx = self.tenant_count;
+        self.domains[idx].init(tenant_id);
+        self.states[idx] = initial_state;
+        self.tenant_count += 1;
+        Some(idx)
+    }
+
+    #[inline]
+    fn find_tenant(&self, tenant_id: TenantId) -> Option<usize> {
+        for i in 0..self.tenant_count {
+            if self.domains[i].active && self.domains[i].tenant_id == tenant_id {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    #[inline]
+    pub fn admit(
+        &mut self,
+        tenant_id: TenantId,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        let idx = self.find_tenant(tenant_id).ok_or(AdmitError::MalformedFact)?;
+        let domain = &mut self.domains[idx];
+
+        if !deps.is_empty() {
+            let deps_clock = build_deps_clock(deps);
+            if !check_dominance(&domain.frontier.clock, &deps_clock) {
+                return Err(AdmitError::CausalityViolation);
+            }
+            if domain.exact_index.contains_all(deps).is_err() {
+                return Err(AdmitError::CausalHorizonExceeded);
+            }
+        }
+
+        self.invariant
+            .apply(payload, self.states[idx].as_bytes_mut())
+            .map_err(|_| AdmitError::InvariantViolation)?;
+
+        domain.frontier.advance(*fact_id);
+        domain.exact_index.insert(fact_id);
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn clock(&self, tenant_id: TenantId) -> Option<&CausalClock> {
+        self.find_tenant(tenant_id).map(|idx| &self.domains[idx].frontier.clock)
+    }
+
+    #[inline(always)]
+    pub fn state(&self, tenant_id: TenantId) -> Option<&StateCell> {
+        self.find_tenant(tenant_id).map(|idx| &self.states[idx])
+    }
+
+    #[inline(always)]
+    pub fn saturation(&self, tenant_id: TenantId) -> Option<f32> {
+        self.find_tenant(tenant_id).map(|idx| self.domains[idx].saturation())
+    }
+
+    #[inline(always)]
+    pub fn query(&self, tenant_id: TenantId, requirement: &CausalClock) -> bool {
+        self.find_tenant(tenant_id)
+            .map(|idx| self.domains[idx].frontier.clock.dominates(requirement))
+            .unwrap_or(false)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1171,5 +1305,67 @@ mod tests {
 
         let result = kernel.admit_raw(&fact_id, &[], &payload);
         assert_eq!(result, Err(AdmitError::InvariantViolation));
+    }
+
+    #[test]
+    fn test_tenant_kernel_isolation() {
+        let mut kernel = TenantKernel::new(TotalSupplyInvariant::new());
+
+        let state_a = make_state_cell(100, 0, 1000);
+        let state_b = make_state_cell(500, 0, 2000);
+
+        kernel.register_tenant(1, state_a).unwrap();
+        kernel.register_tenant(2, state_b).unwrap();
+
+        // Tenant 1: admit fact
+        let fact_a1: FactId = [1u8; 32];
+        let payload_a1 = make_payload(50);
+        kernel.admit(1, &fact_a1, &[], &payload_a1).unwrap();
+
+        // Tenant 2: admit fact (independent causal domain)
+        let fact_b1: FactId = [2u8; 32];
+        let payload_b1 = make_payload(100);
+        kernel.admit(2, &fact_b1, &[], &payload_b1).unwrap();
+
+        // Verify isolated state
+        let s_a = kernel.state(1).unwrap().cast_ref::<ConservationState>().unwrap();
+        let s_b = kernel.state(2).unwrap().cast_ref::<ConservationState>().unwrap();
+        assert_eq!(s_a.balance, 150);
+        assert_eq!(s_b.balance, 600);
+
+        // Tenant 1: cannot depend on Tenant 2's fact (isolated causal domains)
+        let fact_a2: FactId = [3u8; 32];
+        let payload_a2 = make_payload(10);
+        let result = kernel.admit(1, &fact_a2, &[fact_b1], &payload_a2);
+        assert_eq!(result, Err(AdmitError::CausalityViolation));
+
+        // Tenant 1: can depend on own fact
+        let result = kernel.admit(1, &fact_a2, &[fact_a1], &payload_a2);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_tenant_kernel_saturation_isolation() {
+        let mut kernel = TenantKernel::new(TotalSupplyInvariant::new());
+
+        let state = make_state_cell(0, i128::MIN, i128::MAX);
+        kernel.register_tenant(1, state).unwrap();
+        kernel.register_tenant(2, state).unwrap();
+
+        // Saturate tenant 1's Bloom filter
+        for i in 0..200u32 {
+            let mut fact_id = [0u8; 32];
+            fact_id[0..4].copy_from_slice(&i.to_le_bytes());
+            let payload = make_payload(1);
+            kernel.admit(1, &fact_id, &[], &payload).unwrap();
+        }
+
+        // Tenant 1 should have high saturation
+        let sat_1 = kernel.saturation(1).unwrap();
+        // Tenant 2 should have zero saturation (isolated)
+        let sat_2 = kernel.saturation(2).unwrap();
+
+        assert!(sat_1 > 0.1);
+        assert_eq!(sat_2, 0.0);
     }
 }
