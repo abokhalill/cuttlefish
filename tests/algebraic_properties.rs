@@ -6,13 +6,13 @@
 //! - Associativity (for lattice operations)
 //! - Convergence
 
+use cuttlefish::algebra::lattice::{GSetLattice, JoinSemilattice, MaxU64, PNCounter};
+use cuttlefish::algebra::proofs::{CommutativityProof, ConvergenceWitness, IdempotenceProof};
+use cuttlefish::core::invariant::Invariant;
+use cuttlefish::invariants::graph::GGraphInvariant;
+use cuttlefish::invariants::monotonic::{GCounterInvariant, LWWInvariant, MaxInvariant};
 use cuttlefish::invariants::total_supply::TotalSupplyInvariant;
 use cuttlefish::invariants::uniqueness::UniquenessInvariant;
-use cuttlefish::invariants::monotonic::{MaxInvariant, GCounterInvariant, LWWInvariant};
-use cuttlefish::invariants::graph::GGraphInvariant;
-use cuttlefish::core::invariant::Invariant;
-use cuttlefish::algebra::proofs::{CommutativityProof, IdempotenceProof, ConvergenceWitness};
-use cuttlefish::algebra::lattice::{JoinSemilattice, MaxU64, GSetLattice, PNCounter};
 
 // ============================================================================
 // Commutativity Tests
@@ -29,13 +29,7 @@ fn test_total_supply_commutativity() {
     initial[32..48].copy_from_slice(&1000i128.to_le_bytes());
 
     // Test multiple delta pairs
-    let test_cases: [(i128, i128); 5] = [
-        (10, 20),
-        (-50, 100),
-        (0, 0),
-        (100, -100),
-        (1, -1),
-    ];
+    let test_cases: [(i128, i128); 5] = [(10, 20), (-50, 100), (0, 0), (100, -100), (1, -1)];
 
     for (d1, d2) in test_cases {
         let delta_a = d1.to_le_bytes();
@@ -48,7 +42,8 @@ fn test_total_supply_commutativity() {
         assert!(
             proof.is_valid(),
             "TotalSupply should be commutative for deltas ({}, {})",
-            d1, d2
+            d1,
+            d2
         );
     }
 }
@@ -60,12 +55,7 @@ fn test_max_invariant_commutativity() {
     let mut initial = [0u8; 64];
     initial[0..8].copy_from_slice(&50u64.to_le_bytes());
 
-    let test_cases: [(u64, u64); 4] = [
-        (100, 200),
-        (200, 100),
-        (50, 50),
-        (0, 1000),
-    ];
+    let test_cases: [(u64, u64); 4] = [(100, 200), (200, 100), (50, 50), (0, 1000)];
 
     for (v1, v2) in test_cases {
         let mut delta_a = [0u8; 16];
@@ -80,7 +70,8 @@ fn test_max_invariant_commutativity() {
         assert!(
             proof.is_valid(),
             "MaxInvariant should be commutative for values ({}, {})",
-            v1, v2
+            v1,
+            v2
         );
     }
 }
@@ -91,12 +82,7 @@ fn test_gcounter_commutativity() {
 
     let initial = [0u8; 64];
 
-    let test_cases: [(u64, u64); 4] = [
-        (10, 20),
-        (100, 1),
-        (0, 0),
-        (1, 1),
-    ];
+    let test_cases: [(u64, u64); 4] = [(10, 20), (100, 1), (0, 0), (1, 1)];
 
     for (d1, d2) in test_cases {
         let mut delta_a = [0u8; 16];
@@ -111,7 +97,8 @@ fn test_gcounter_commutativity() {
         assert!(
             proof.is_valid(),
             "GCounter should be commutative for deltas ({}, {})",
-            d1, d2
+            d1,
+            d2
         );
     }
 }
@@ -152,7 +139,10 @@ fn test_ggraph_commutativity() {
         assert!(
             proof.is_valid(),
             "GGraph should be commutative for edges ({}->{}) and ({}->{})",
-            f1, t1, f2, t2
+            f1,
+            t1,
+            f2,
+            t2
         );
     }
 }
@@ -235,7 +225,8 @@ fn test_ggraph_idempotence() {
         assert!(
             proof.is_valid(),
             "GGraph should be idempotent for edge {}->{}",
-            from, to
+            from,
+            to
         );
     }
 }
@@ -331,9 +322,12 @@ fn test_total_supply_convergence() {
         15i128.to_le_bytes(),
     ];
 
-    let witness = ConvergenceWitness::verify(&initial, &deltas, |delta, state| {
-        inv.apply(delta, state).map_err(|_| ())
-    }, 10);
+    let witness = ConvergenceWitness::verify(
+        &initial,
+        &deltas,
+        |delta, state| inv.apply(delta, state).map_err(|_| ()),
+        10,
+    );
 
     assert!(
         witness.is_valid(),
@@ -360,9 +354,12 @@ fn test_gcounter_convergence() {
         d
     };
 
-    let witness = ConvergenceWitness::verify(&initial, &deltas, |delta, state| {
-        inv.apply(delta, state).map_err(|_| ())
-    }, 10);
+    let witness = ConvergenceWitness::verify(
+        &initial,
+        &deltas,
+        |delta, state| inv.apply(delta, state).map_err(|_| ()),
+        10,
+    );
 
     assert!(witness.is_valid(), "GCounter should converge");
 
@@ -386,9 +383,12 @@ fn test_max_convergence() {
         d
     };
 
-    let witness = ConvergenceWitness::verify(&initial, &deltas, |delta, state| {
-        inv.apply(delta, state).map_err(|_| ())
-    }, 10);
+    let witness = ConvergenceWitness::verify(
+        &initial,
+        &deltas,
+        |delta, state| inv.apply(delta, state).map_err(|_| ()),
+        10,
+    );
 
     assert!(witness.is_valid(), "Max should converge");
 
@@ -405,10 +405,7 @@ fn test_max_convergence() {
 fn test_composition_preserves_commutativity() {
     use cuttlefish::algebra::composition::ComposedInvariant;
 
-    let composed = ComposedInvariant::new(
-        TotalSupplyInvariant::new(),
-        GCounterInvariant::new(),
-    );
+    let composed = ComposedInvariant::new(TotalSupplyInvariant::new(), GCounterInvariant::new());
 
     // Initialize state: TotalSupply (64 bytes) + GCounter (64 bytes)
     let mut initial = [0u8; 128];
@@ -429,13 +426,21 @@ fn test_composition_preserves_commutativity() {
 
     // Order 1: apply (payload1_a, payload1_b) then (payload2_a, payload2_b)
     let mut state1 = initial;
-    composed.apply_split(&payload1_a, &payload1_b, &mut state1).unwrap();
-    composed.apply_split(&payload2_a, &payload2_b, &mut state1).unwrap();
+    composed
+        .apply_split(&payload1_a, &payload1_b, &mut state1)
+        .unwrap();
+    composed
+        .apply_split(&payload2_a, &payload2_b, &mut state1)
+        .unwrap();
 
     // Order 2: apply (payload2_a, payload2_b) then (payload1_a, payload1_b)
     let mut state2 = initial;
-    composed.apply_split(&payload2_a, &payload2_b, &mut state2).unwrap();
-    composed.apply_split(&payload1_a, &payload1_b, &mut state2).unwrap();
+    composed
+        .apply_split(&payload2_a, &payload2_b, &mut state2)
+        .unwrap();
+    composed
+        .apply_split(&payload1_a, &payload1_b, &mut state2)
+        .unwrap();
 
     // States should be identical
     assert_eq!(state1, state2, "Composed invariant should be commutative");

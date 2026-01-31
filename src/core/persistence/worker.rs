@@ -150,9 +150,7 @@ impl PersistenceWorker {
             .append(false)
             .open(wal_path)?;
 
-        let ring = IoUring::builder()
-            .setup_single_issuer()
-            .build(ring_size)?;
+        let ring = IoUring::builder().setup_single_issuer().build(ring_size)?;
 
         Ok(Self {
             ring,
@@ -186,10 +184,12 @@ impl PersistenceWorker {
     fn submit_write(&mut self, entries: &[PersistenceEntry]) -> std::io::Result<()> {
         let buf_idx = match self.buffer_pool.acquire() {
             Some(idx) => idx,
-            None => return Err(std::io::Error::new(
-                std::io::ErrorKind::WouldBlock,
-                "buffer pool exhausted",
-            )),
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    "buffer pool exhausted",
+                ))
+            }
         };
 
         let buffer = self.buffer_pool.get_mut(buf_idx);
@@ -246,9 +246,10 @@ impl PersistenceWorker {
         .user_data(buf_idx as u64);
 
         unsafe {
-            self.ring.submission().push(&write_op).map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::Other, "SQ full")
-            })?;
+            self.ring
+                .submission()
+                .push(&write_op)
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "SQ full"))?;
         }
 
         self.ring.submit()?;
@@ -274,7 +275,11 @@ impl PersistenceWorker {
                     return Err(std::io::Error::from_raw_os_error(-result));
                 }
 
-                if let Some(pos) = self.pending_writes.iter().position(|(idx, _)| *idx == buf_idx) {
+                if let Some(pos) = self
+                    .pending_writes
+                    .iter()
+                    .position(|(idx, _)| *idx == buf_idx)
+                {
                     let (_, entries) = self.pending_writes.remove(pos);
                     completed_entries.extend(entries);
                 }
@@ -289,9 +294,10 @@ impl PersistenceWorker {
                 .user_data(u64::MAX);
 
             unsafe {
-                self.ring.submission().push(&fsync_op).map_err(|_| {
-                    std::io::Error::new(std::io::ErrorKind::Other, "SQ full")
-                })?;
+                self.ring
+                    .submission()
+                    .push(&fsync_op)
+                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "SQ full"))?;
             }
             self.ring.submit_and_wait(1)?;
 
@@ -364,9 +370,7 @@ impl ArenaPersistenceWorker {
             .read(true)
             .open(wal_path)?;
 
-        let ring = IoUring::builder()
-            .setup_single_issuer()
-            .build(ring_size)?;
+        let ring = IoUring::builder().setup_single_issuer().build(ring_size)?;
 
         Ok(Self {
             ring,
@@ -409,10 +413,12 @@ impl ArenaPersistenceWorker {
     fn submit_arena_write(&mut self, slots: &[SlotIndex]) -> std::io::Result<()> {
         let buf_idx = match self.buffer_pool.acquire() {
             Some(idx) => idx,
-            None => return Err(std::io::Error::new(
-                std::io::ErrorKind::WouldBlock,
-                "buffer pool exhausted",
-            )),
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    "buffer pool exhausted",
+                ))
+            }
         };
 
         let buffer = self.buffer_pool.get_mut(buf_idx);
@@ -443,7 +449,8 @@ impl ArenaPersistenceWorker {
 
             // Write header
             let header_bytes = header.to_bytes();
-            buffer.data[offset..offset + RecoveryWalEntryHeader::SIZE].copy_from_slice(&header_bytes);
+            buffer.data[offset..offset + RecoveryWalEntryHeader::SIZE]
+                .copy_from_slice(&header_bytes);
             offset += RecoveryWalEntryHeader::SIZE;
 
             // Write payload
@@ -478,9 +485,10 @@ impl ArenaPersistenceWorker {
         .user_data(buf_idx as u64);
 
         unsafe {
-            self.ring.submission().push(&write_op).map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::Other, "SQ full")
-            })?;
+            self.ring
+                .submission()
+                .push(&write_op)
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "SQ full"))?;
         }
 
         self.ring.submit()?;
@@ -496,7 +504,8 @@ impl ArenaPersistenceWorker {
 
         // Fixed-size completion buffer (no heap allocation)
         const MAX_COMPLETIONS: usize = 64;
-        let mut completed_slots: [(SlotIndex, [u8; 32]); MAX_COMPLETIONS] = [(0, [0u8; 32]); MAX_COMPLETIONS];
+        let mut completed_slots: [(SlotIndex, [u8; 32]); MAX_COMPLETIONS] =
+            [(0, [0u8; 32]); MAX_COMPLETIONS];
         let mut completed_count = 0usize;
 
         {
@@ -521,7 +530,9 @@ impl ArenaPersistenceWorker {
                             break;
                         }
                         let slot_idx = pending.slot_indices[i];
-                        let fact_id = self.arena.get_header(slot_idx)
+                        let fact_id = self
+                            .arena
+                            .get_header(slot_idx)
                             .map(|h| h.fact_id)
                             .unwrap_or([0u8; 32]);
                         completed_slots[completed_count] = (slot_idx, fact_id);
@@ -539,9 +550,10 @@ impl ArenaPersistenceWorker {
                 .user_data(u64::MAX);
 
             unsafe {
-                self.ring.submission().push(&fsync_op).map_err(|_| {
-                    std::io::Error::new(std::io::ErrorKind::Other, "SQ full")
-                })?;
+                self.ring
+                    .submission()
+                    .push(&fsync_op)
+                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "SQ full"))?;
             }
             self.ring.submit_and_wait(1)?;
 
@@ -573,11 +585,11 @@ impl ArenaPersistenceWorker {
     /// Drain all pending completions without blocking.
     pub fn drain_completions(&mut self) -> std::io::Result<()> {
         self.ring.submit()?;
-        
+
         let cq = self.ring.completion();
         for cqe in cq {
             let buf_idx = cqe.user_data() as usize;
-            
+
             if let Some(pending) = self.pending_writes[buf_idx].take() {
                 for i in 0..pending.slot_count {
                     let slot_idx = pending.slot_indices[i];
@@ -587,7 +599,7 @@ impl ArenaPersistenceWorker {
                     let _ = self.arena.complete_persistence(slot_idx);
                 }
             }
-            
+
             self.buffer_pool.release(buf_idx);
         }
 

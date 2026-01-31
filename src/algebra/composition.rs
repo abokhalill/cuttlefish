@@ -1,7 +1,7 @@
 //! Invariant composition. Parallel composition preserves algebraic properties.
 
-use crate::core::invariant::{Invariant, InvariantError};
 use super::classes::AlgebraicClass;
+use crate::core::invariant::{Invariant, InvariantError};
 
 pub const MAX_COMPOSED_INVARIANTS: usize = 8;
 
@@ -226,11 +226,7 @@ impl DynamicComposition {
     ///
     /// Each invariant gets a 64-byte slice of state.
     /// Payloads are provided as a slice of slices.
-    pub fn apply_all(
-        &self,
-        payloads: &[&[u8]],
-        state: &mut [u8],
-    ) -> Result<(), InvariantError> {
+    pub fn apply_all(&self, payloads: &[&[u8]], state: &mut [u8]) -> Result<(), InvariantError> {
         if payloads.len() != self.count {
             return Err(InvariantError::MalformedPayload);
         }
@@ -284,15 +280,13 @@ mod tests {
 
     #[test]
     fn test_composed_invariant_both_succeed() {
-        let composed = ComposedInvariant::new(
-            TotalSupplyInvariant::new(),
-            UniquenessInvariant::new(),
-        );
+        let composed =
+            ComposedInvariant::new(TotalSupplyInvariant::new(), UniquenessInvariant::new());
 
         // Initialize state: balance=100, min=0, max=1000, uniqueness=empty
         let mut state = [0u8; 128];
         state[0..16].copy_from_slice(&100i128.to_le_bytes()); // balance
-        state[16..32].copy_from_slice(&0i128.to_le_bytes());   // min
+        state[16..32].copy_from_slice(&0i128.to_le_bytes()); // min
         state[32..48].copy_from_slice(&1000i128.to_le_bytes()); // max
 
         // Payloads: add 50 to balance, mark element 42 as used
@@ -310,10 +304,8 @@ mod tests {
 
     #[test]
     fn test_composed_invariant_first_fails() {
-        let composed = ComposedInvariant::new(
-            TotalSupplyInvariant::new(),
-            UniquenessInvariant::new(),
-        );
+        let composed =
+            ComposedInvariant::new(TotalSupplyInvariant::new(), UniquenessInvariant::new());
 
         let mut state = [0u8; 128];
         state[0..16].copy_from_slice(&100i128.to_le_bytes());
@@ -339,7 +331,10 @@ mod tests {
 
         // Commutative + Commutative = Commutative
         assert_eq!(
-            ParallelComposition::<TotalSupplyInvariant, 4>::compose_classes(Commutative, Commutative),
+            ParallelComposition::<TotalSupplyInvariant, 4>::compose_classes(
+                Commutative,
+                Commutative
+            ),
             Commutative
         );
 

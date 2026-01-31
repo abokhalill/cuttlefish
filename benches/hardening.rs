@@ -1,10 +1,10 @@
 //! Benchmarks for hardened components: checkpoint hashing, state transitions, memory ordering.
 //! Measures the overhead of security hardening vs raw performance.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use cuttlefish::core::checkpoint::{Checkpoint, CheckpointHeader, WalHasher};
-use cuttlefish::core::state::StateCell;
 use cuttlefish::core::frontier::FrontierState;
+use cuttlefish::core::state::StateCell;
 use cuttlefish::core::topology::CausalClock;
 use zerocopy::IntoBytes;
 
@@ -33,9 +33,7 @@ fn bench_state_hash_only(c: &mut Criterion) {
     state.as_slice_mut()[0..8].copy_from_slice(&0xCAFEBABEu64.to_le_bytes());
 
     c.bench_function("checkpoint/state_hash", |b| {
-        b.iter(|| {
-            black_box(Checkpoint::compute_state_hash(black_box(&state)))
-        })
+        b.iter(|| black_box(Checkpoint::compute_state_hash(black_box(&state))))
     });
 }
 
@@ -65,9 +63,7 @@ fn bench_checkpoint_header_serialization(c: &mut Criterion) {
     let header = CheckpointHeader::new(12345, 4096 * 100, hash);
 
     c.bench_function("checkpoint/header_to_bytes", |b| {
-        b.iter(|| {
-            black_box(header.to_bytes())
-        })
+        b.iter(|| black_box(header.to_bytes()))
     });
 }
 
@@ -77,9 +73,7 @@ fn bench_checkpoint_header_parsing(c: &mut Criterion) {
     let bytes = header.to_bytes();
 
     c.bench_function("checkpoint/header_from_bytes", |b| {
-        b.iter(|| {
-            black_box(CheckpointHeader::from_bytes(black_box(&bytes)))
-        })
+        b.iter(|| black_box(CheckpointHeader::from_bytes(black_box(&bytes))))
     });
 }
 
@@ -159,9 +153,7 @@ fn bench_causal_clock_dominates(c: &mut Criterion) {
     }
 
     c.bench_function("causal_clock/dominates", |b| {
-        b.iter(|| {
-            black_box(clock1.dominates(black_box(&clock2)))
-        })
+        b.iter(|| black_box(clock1.dominates(black_box(&clock2))))
     });
 }
 
@@ -187,18 +179,10 @@ fn bench_frontier_advance(c: &mut Criterion) {
 fn bench_state_cell_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("state_cell");
 
-    group.bench_function("new", |b| {
-        b.iter(|| {
-            black_box(StateCell::new())
-        })
-    });
+    group.bench_function("new", |b| b.iter(|| black_box(StateCell::new())));
 
     let state = StateCell::new();
-    group.bench_function("as_bytes", |b| {
-        b.iter(|| {
-            black_box(state.as_bytes())
-        })
-    });
+    group.bench_function("as_bytes", |b| b.iter(|| black_box(state.as_bytes())));
 
     let data = [0xABu8; 64];
     group.bench_function("copy_from_slice", |b| {

@@ -5,7 +5,7 @@
 //! - Two-tier causality overhead
 //! - Adversarial false-positive rejection (correctness)
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::hint::black_box as std_black_box;
 
 use cuttlefish::core::kernel::TwoLaneKernel;
@@ -33,7 +33,7 @@ fn flush_cache() {
     // 8MB array to exceed L3 cache
     let flush_size = 8 * 1024 * 1024;
     let flush_data: Vec<u8> = vec![0u8; flush_size];
-    
+
     // Read through the array to evict cache lines
     let mut sum: u64 = 0;
     for chunk in flush_data.chunks(64) {
@@ -55,11 +55,7 @@ fn bench_two_lane_warm_cache(c: &mut Criterion) {
             fact_id[..8].copy_from_slice(&counter.to_le_bytes());
             counter = counter.wrapping_add(1);
 
-            black_box(kernel.admit(
-                black_box(&fact_id),
-                black_box(&[]),
-                black_box(&payload),
-            ))
+            black_box(kernel.admit(black_box(&fact_id), black_box(&[]), black_box(&payload)))
         })
     });
 }

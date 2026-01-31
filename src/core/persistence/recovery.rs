@@ -64,8 +64,7 @@ impl WalEntryHeader {
 
         let payload_len = u32::from_le_bytes([bytes[36], bytes[37], bytes[38], bytes[39]]);
         let sequence = u64::from_le_bytes([
-            bytes[40], bytes[41], bytes[42], bytes[43],
-            bytes[44], bytes[45], bytes[46], bytes[47],
+            bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
         ]);
 
         let mut hash = [0u8; 32];
@@ -240,7 +239,11 @@ impl<I: Invariant> WalRecovery<I> {
             }
 
             // Apply to state
-            if self.invariant.apply(&payload, self.state.as_bytes_mut()).is_err() {
+            if self
+                .invariant
+                .apply(&payload, self.state.as_bytes_mut())
+                .is_err()
+            {
                 return Err(RecoveryError::InvariantViolation {
                     sequence: header.sequence,
                 });
@@ -264,7 +267,7 @@ impl<I: Invariant> WalRecovery<I> {
     }
 
     /// Zero-heap recovery from WAL file using fixed-size stack buffer.
-    /// 
+    ///
     /// Uses a fixed `PAYLOAD_CAPACITY` buffer instead of Vec allocation.
     /// Constraint: payloads must fit within PAYLOAD_CAPACITY (200 bytes).
     pub fn recover_zero_heap(&mut self, path: &str) -> Result<RecoveryResult, RecoveryError> {
@@ -341,7 +344,11 @@ impl<I: Invariant> WalRecovery<I> {
             }
 
             // Apply invariant to state
-            if self.invariant.apply(payload, self.state.as_bytes_mut()).is_err() {
+            if self
+                .invariant
+                .apply(payload, self.state.as_bytes_mut())
+                .is_err()
+            {
                 return Err(RecoveryError::InvariantViolation {
                     sequence: header.sequence,
                 });
@@ -476,20 +483,21 @@ impl<I: Invariant> BootstrapEngine<I> {
 
         // Check if WAL exists
         if !std::path::Path::new(wal_path).exists() {
-            return Ok((RecoveryResult {
-                entries_recovered: 0,
-                last_sequence: start_sequence,
-                corrupted_entries: 0,
-                end_offset: start_offset,
-            }, checkpoint_loaded));
+            return Ok((
+                RecoveryResult {
+                    entries_recovered: 0,
+                    last_sequence: start_sequence,
+                    corrupted_entries: 0,
+                    end_offset: start_offset,
+                },
+                checkpoint_loaded,
+            ));
         }
 
         // Replay WAL from checkpoint offset (zero-heap)
-        let result = self.recovery.recover_zero_heap_from_offset(
-            wal_path,
-            start_offset,
-            start_sequence,
-        )?;
+        let result =
+            self.recovery
+                .recover_zero_heap_from_offset(wal_path, start_offset, start_sequence)?;
 
         Ok((result, checkpoint_loaded))
     }

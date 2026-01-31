@@ -27,16 +27,28 @@ impl CausalClock {
     #[inline(always)]
     fn hash_to_indices(fact_id: &FactId) -> (usize, usize, usize) {
         let h0 = Self::mix64(u64::from_le_bytes([
-            fact_id[0], fact_id[1], fact_id[2], fact_id[3],
-            fact_id[4], fact_id[5], fact_id[6], fact_id[7],
+            fact_id[0], fact_id[1], fact_id[2], fact_id[3], fact_id[4], fact_id[5], fact_id[6],
+            fact_id[7],
         ]));
         let h1 = Self::mix64(u64::from_le_bytes([
-            fact_id[8], fact_id[9], fact_id[10], fact_id[11],
-            fact_id[12], fact_id[13], fact_id[14], fact_id[15],
+            fact_id[8],
+            fact_id[9],
+            fact_id[10],
+            fact_id[11],
+            fact_id[12],
+            fact_id[13],
+            fact_id[14],
+            fact_id[15],
         ]));
         let h2 = Self::mix64(u64::from_le_bytes([
-            fact_id[16], fact_id[17], fact_id[18], fact_id[19],
-            fact_id[20], fact_id[21], fact_id[22], fact_id[23],
+            fact_id[16],
+            fact_id[17],
+            fact_id[18],
+            fact_id[19],
+            fact_id[20],
+            fact_id[21],
+            fact_id[22],
+            fact_id[23],
         ]));
 
         let idx0 = (h0 as usize) & 0x1FF;
@@ -267,7 +279,7 @@ pub enum SlotState {
 pub struct IndexSlot {
     pub fact_id: FactId,
     pub state: SlotState,
-    pub psl: u8,  // Probe Sequence Length for Robin Hood
+    pub psl: u8, // Probe Sequence Length for Robin Hood
     _pad: [u8; 2],
 }
 
@@ -310,7 +322,9 @@ pub struct ExactCausalIndex {
     _pad: [u8; 44],
 }
 
-const _: () = { assert!(core::mem::align_of::<ExactCausalIndex>() == 64); };
+const _: () = {
+    assert!(core::mem::align_of::<ExactCausalIndex>() == 64);
+};
 
 impl ExactCausalIndex {
     pub const fn new() -> Self {
@@ -325,8 +339,8 @@ impl ExactCausalIndex {
     #[inline(always)]
     fn hash_to_index(fact_id: &FactId) -> usize {
         let h = u64::from_le_bytes([
-            fact_id[0], fact_id[1], fact_id[2], fact_id[3],
-            fact_id[4], fact_id[5], fact_id[6], fact_id[7],
+            fact_id[0], fact_id[1], fact_id[2], fact_id[3], fact_id[4], fact_id[5], fact_id[6],
+            fact_id[7],
         ]);
         let mixed = CausalClock::mix64(h);
         (mixed as usize) & EXACT_INDEX_MASK
@@ -432,9 +446,8 @@ impl ExactCausalIndex {
                 }
 
                 if slot0.is_occupied() {
-                    let candidate = unsafe {
-                        _mm256_loadu_si256(slot0.fact_id.as_ptr() as *const __m256i)
-                    };
+                    let candidate =
+                        unsafe { _mm256_loadu_si256(slot0.fact_id.as_ptr() as *const __m256i) };
                     let cmp = unsafe { _mm256_cmpeq_epi8(target, candidate) };
                     let mask = unsafe { _mm256_movemask_epi8(cmp) };
                     if mask == -1i32 {
@@ -447,9 +460,8 @@ impl ExactCausalIndex {
                 }
 
                 if slot1.is_occupied() {
-                    let candidate = unsafe {
-                        _mm256_loadu_si256(slot1.fact_id.as_ptr() as *const __m256i)
-                    };
+                    let candidate =
+                        unsafe { _mm256_loadu_si256(slot1.fact_id.as_ptr() as *const __m256i) };
                     let cmp = unsafe { _mm256_cmpeq_epi8(target, candidate) };
                     if unsafe { _mm256_movemask_epi8(cmp) } == -1i32 {
                         return true;
@@ -459,9 +471,8 @@ impl ExactCausalIndex {
                 }
 
                 if slot2.is_occupied() {
-                    let candidate = unsafe {
-                        _mm256_loadu_si256(slot2.fact_id.as_ptr() as *const __m256i)
-                    };
+                    let candidate =
+                        unsafe { _mm256_loadu_si256(slot2.fact_id.as_ptr() as *const __m256i) };
                     let cmp = unsafe { _mm256_cmpeq_epi8(target, candidate) };
                     if unsafe { _mm256_movemask_epi8(cmp) } == -1i32 {
                         return true;
@@ -471,9 +482,8 @@ impl ExactCausalIndex {
                 }
 
                 if slot3.is_occupied() {
-                    let candidate = unsafe {
-                        _mm256_loadu_si256(slot3.fact_id.as_ptr() as *const __m256i)
-                    };
+                    let candidate =
+                        unsafe { _mm256_loadu_si256(slot3.fact_id.as_ptr() as *const __m256i) };
                     let cmp = unsafe { _mm256_cmpeq_epi8(target, candidate) };
                     if unsafe { _mm256_movemask_epi8(cmp) } == -1i32 {
                         return true;
@@ -941,6 +951,9 @@ mod tests {
         assert!(index.contains_all_simd(&facts[..2]).is_ok());
 
         let unknown: FactId = [99u8; 32];
-        assert_eq!(index.contains_all_simd(&[unknown]), Err(CausalHorizonExceeded));
+        assert_eq!(
+            index.contains_all_simd(&[unknown]),
+            Err(CausalHorizonExceeded)
+        );
     }
 }

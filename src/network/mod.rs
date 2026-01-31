@@ -11,16 +11,12 @@
 mod protocol;
 mod worker;
 
-pub use protocol::{
-    MessageType, NetworkMessage, WireHeader, WIRE_MAGIC, WIRE_VERSION,
-};
+pub use protocol::{MessageType, NetworkMessage, WireHeader, WIRE_MAGIC, WIRE_VERSION};
 pub use worker::{
-    BroadcastEntry, BroadcastFrame, NetworkConfig, NetworkWorker, PeerAddr,
-    SendBuffer,
+    BroadcastEntry, BroadcastFrame, NetworkConfig, NetworkWorker, PeerAddr, SendBuffer,
 };
 
 #[cfg(all(feature = "persistence", target_os = "linux"))]
 pub use worker::{
-    ZeroCopyBroadcastEntry, ZeroCopyCommand,
-    ZeroCopyNetworkWorker, ZeroCopyNetworkHandle,
+    ZeroCopyBroadcastEntry, ZeroCopyCommand, ZeroCopyNetworkHandle, ZeroCopyNetworkWorker,
 };

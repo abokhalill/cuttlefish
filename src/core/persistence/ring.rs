@@ -114,7 +114,9 @@ impl<'a, const N: usize> SPSCProducer<'a, N> {
             *slot = entry;
         }
 
-        self.ring.head.store(head.wrapping_add(1), Ordering::Release);
+        self.ring
+            .head
+            .store(head.wrapping_add(1), Ordering::Release);
         Ok(())
     }
 
@@ -154,7 +156,9 @@ impl<'a, const N: usize> SPSCConsumer<'a, N> {
             *slot
         };
 
-        self.ring.tail.store(tail.wrapping_add(1), Ordering::Release);
+        self.ring
+            .tail
+            .store(tail.wrapping_add(1), Ordering::Release);
         Some(entry)
     }
 

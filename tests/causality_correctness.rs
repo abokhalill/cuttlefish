@@ -3,8 +3,8 @@
 //! These tests prove that the Two-Lane architecture correctly rejects
 //! facts with false-positive dependencies (BFVC says yes, ExactIndex says no).
 
-use cuttlefish::core::kernel::{AdmitError, TwoLaneKernel};
 use cuttlefish::core::frontier::build_deps_clock;
+use cuttlefish::core::kernel::{AdmitError, TwoLaneKernel};
 use cuttlefish::core::state::StateCell;
 use cuttlefish::core::topology::{CausalClock, ExactCausalIndex, FactId};
 use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
@@ -54,9 +54,10 @@ fn test_false_positive_dependency_rejected() {
 
     // MUST be rejected - either by BFVC (CausalityViolation) or ExactIndex (CausalHorizonExceeded)
     assert!(
-        result == Err(AdmitError::CausalityViolation) ||
-        result == Err(AdmitError::CausalHorizonExceeded),
-        "Kernel must reject dependency that was never admitted, got {:?}", result
+        result == Err(AdmitError::CausalityViolation)
+            || result == Err(AdmitError::CausalHorizonExceeded),
+        "Kernel must reject dependency that was never admitted, got {:?}",
+        result
     );
 
     // Verify the new fact was NOT admitted
@@ -108,9 +109,10 @@ fn test_multiple_deps_all_must_exist() {
 
     // Must be rejected - either by BFVC or ExactIndex
     assert!(
-        result == Err(AdmitError::CausalityViolation) ||
-        result == Err(AdmitError::CausalHorizonExceeded),
-        "Must reject if ANY dependency is missing, got {:?}", result
+        result == Err(AdmitError::CausalityViolation)
+            || result == Err(AdmitError::CausalHorizonExceeded),
+        "Must reject if ANY dependency is missing, got {:?}",
+        result
     );
 }
 

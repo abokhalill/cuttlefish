@@ -71,9 +71,7 @@ fn bench_causal_clock_observe(c: &mut Criterion) {
     let fact_id: FactId = [0xAB; 32];
 
     c.bench_function("causal_clock_observe", |b| {
-        b.iter(|| {
-            black_box(clock.observe(black_box(&fact_id)))
-        })
+        b.iter(|| black_box(clock.observe(black_box(&fact_id))))
     });
 }
 
@@ -96,12 +94,7 @@ fn bench_causal_clock_dominates(c: &mut Criterion) {
 }
 
 fn bench_build_deps_clock(c: &mut Criterion) {
-    let deps: [FactId; 4] = [
-        [1u8; 32],
-        [2u8; 32],
-        [3u8; 32],
-        [4u8; 32],
-    ];
+    let deps: [FactId; 4] = [[1u8; 32], [2u8; 32], [3u8; 32], [4u8; 32]];
 
     c.bench_function("build_deps_clock_4", |b| {
         b.iter(|| black_box(build_deps_clock(black_box(&deps))))

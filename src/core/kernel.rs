@@ -167,14 +167,20 @@ impl<I: Invariant> Kernel<I> {
         checkpoint: &Checkpoint,
         new_facts: &[(&FactId, &[u8])],
     ) -> Result<(), ReAnchorError> {
-        checkpoint.verify().map_err(ReAnchorError::CheckpointInvalid)?;
+        checkpoint
+            .verify()
+            .map_err(ReAnchorError::CheckpointInvalid)?;
 
         let computed_hash = Checkpoint::compute_state_hash(&checkpoint.state);
         if computed_hash != checkpoint.state_hash {
-            return Err(ReAnchorError::CheckpointInvalid(CheckpointError::StateHashMismatch));
+            return Err(ReAnchorError::CheckpointInvalid(
+                CheckpointError::StateHashMismatch,
+            ));
         }
 
-        self.state.as_bytes_mut().copy_from_slice(checkpoint.state.as_bytes());
+        self.state
+            .as_bytes_mut()
+            .copy_from_slice(checkpoint.state.as_bytes());
 
         self.frontier.frontier.clear();
         for fact_id in checkpoint.frontier.iter() {
@@ -255,11 +261,7 @@ impl<I: Invariant> TwoLaneKernel<I> {
     }
 
     #[inline]
-    pub fn admit_unchecked(
-        &mut self,
-        fact_id: &FactId,
-        payload: &[u8],
-    ) -> Result<(), AdmitError> {
+    pub fn admit_unchecked(&mut self, fact_id: &FactId, payload: &[u8]) -> Result<(), AdmitError> {
         self.invariant
             .apply(payload, self.state.as_bytes_mut())
             .map_err(|_| AdmitError::InvariantViolation)?;
@@ -309,7 +311,7 @@ pub use two_lane_durable::{DurableHandle, TwoLaneDurableKernel};
 mod two_lane_durable {
     use super::*;
     use crate::core::persistence::{
-        ArenaError, PersistenceEntry, PersistenceFrontier, SlotIndex, SPSCProducer, WALArena,
+        ArenaError, PersistenceEntry, PersistenceFrontier, SPSCProducer, SlotIndex, WALArena,
     };
 
     /// Handle for async durability checking. Replaces spin-loop blocking.
@@ -407,12 +409,10 @@ mod two_lane_durable {
             payload: &[u8],
             ack_mode: AckMode,
         ) -> Result<SlotIndex, AdmitError> {
-            let slot_idx = self.arena
-                .acquire_slot()
-                .map_err(|e| match e {
-                    ArenaError::Full => AdmitError::ArenaFull,
-                    _ => AdmitError::MalformedFact,
-                })?;
+            let slot_idx = self.arena.acquire_slot().map_err(|e| match e {
+                ArenaError::Full => AdmitError::ArenaFull,
+                _ => AdmitError::MalformedFact,
+            })?;
 
             if let Err(e) = self.arena.write_slot(slot_idx, fact_id, payload) {
                 let _ = self.arena.release_slot(slot_idx);
@@ -435,7 +435,11 @@ mod two_lane_durable {
                 }
             }
 
-            if self.invariant.apply(payload, self.state.as_bytes_mut()).is_err() {
+            if self
+                .invariant
+                .apply(payload, self.state.as_bytes_mut())
+                .is_err()
+            {
                 let _ = self.arena.release_slot(slot_idx);
                 return Err(AdmitError::InvariantViolation);
             }
@@ -480,12 +484,10 @@ mod two_lane_durable {
             deps: &[FactId],
             payload: &[u8],
         ) -> Result<DurableHandle<'a>, AdmitError> {
-            let slot_idx = self.arena
-                .acquire_slot()
-                .map_err(|e| match e {
-                    ArenaError::Full => AdmitError::ArenaFull,
-                    _ => AdmitError::MalformedFact,
-                })?;
+            let slot_idx = self.arena.acquire_slot().map_err(|e| match e {
+                ArenaError::Full => AdmitError::ArenaFull,
+                _ => AdmitError::MalformedFact,
+            })?;
 
             if let Err(e) = self.arena.write_slot(slot_idx, fact_id, payload) {
                 let _ = self.arena.release_slot(slot_idx);
@@ -507,7 +509,11 @@ mod two_lane_durable {
                 }
             }
 
-            if self.invariant.apply(payload, self.state.as_bytes_mut()).is_err() {
+            if self
+                .invariant
+                .apply(payload, self.state.as_bytes_mut())
+                .is_err()
+            {
                 let _ = self.arena.release_slot(slot_idx);
                 return Err(AdmitError::InvariantViolation);
             }
@@ -675,7 +681,9 @@ mod durable {
                 sequence: seq,
             };
 
-            self.producer.try_push(entry).map_err(|_| AdmitError::BufferFull)?;
+            self.producer
+                .try_push(entry)
+                .map_err(|_| AdmitError::BufferFull)?;
             self.frontier.advance(*fact_id);
 
             Ok(())
@@ -733,7 +741,9 @@ mod durable {
 }
 
 #[cfg(feature = "networking")]
-pub use networking::{BroadcastBuffer, BroadcastConsumer, BroadcastProducer, NetworkingKernel, BROADCAST_BUFFER_SIZE};
+pub use networking::{
+    BroadcastBuffer, BroadcastConsumer, BroadcastProducer, NetworkingKernel, BROADCAST_BUFFER_SIZE,
+};
 
 #[cfg(feature = "networking")]
 mod networking {
@@ -777,7 +787,10 @@ mod networking {
         }
 
         pub fn split(&self) -> (BroadcastProducer<'_, N>, BroadcastConsumer<'_, N>) {
-            (BroadcastProducer { ring: self }, BroadcastConsumer { ring: self })
+            (
+                BroadcastProducer { ring: self },
+                BroadcastConsumer { ring: self },
+            )
         }
     }
 
@@ -806,7 +819,10 @@ mod networking {
                 slot.fact_id = fact_id;
             }
 
-            self.ring.head.0.store(head.wrapping_add(1), Ordering::Release);
+            self.ring
+                .head
+                .0
+                .store(head.wrapping_add(1), Ordering::Release);
             Ok(())
         }
 
@@ -832,11 +848,13 @@ mod networking {
                 return None;
             }
 
-            let fact_id = unsafe {
-                (*self.ring.buffer.get())[tail & BroadcastBuffer::<N>::MASK].fact_id
-            };
+            let fact_id =
+                unsafe { (*self.ring.buffer.get())[tail & BroadcastBuffer::<N>::MASK].fact_id };
 
-            self.ring.tail.0.store(tail.wrapping_add(1), Ordering::Release);
+            self.ring
+                .tail
+                .0
+                .store(tail.wrapping_add(1), Ordering::Release);
             Some(fact_id)
         }
     }
@@ -860,7 +878,11 @@ mod networking {
             }
         }
 
-        pub fn with_state(invariant: I, state: StateCell, broadcast: BroadcastProducer<'a, N>) -> Self {
+        pub fn with_state(
+            invariant: I,
+            state: StateCell,
+            broadcast: BroadcastProducer<'a, N>,
+        ) -> Self {
             Self {
                 frontier: FrontierState::new(),
                 state,
@@ -944,7 +966,8 @@ impl<I: Invariant> EscalatingKernel<I> {
 
     #[inline(always)]
     fn check_escalation(&mut self) {
-        if self.mode == CausalMode::Fast && self.frontier.clock.saturation() >= ESCALATION_THRESHOLD {
+        if self.mode == CausalMode::Fast && self.frontier.clock.saturation() >= ESCALATION_THRESHOLD
+        {
             self.mode = CausalMode::Precise;
         }
     }
@@ -1068,7 +1091,11 @@ impl MultiKernel {
     }
 
     #[inline(always)]
-    pub fn register(&mut self, invariant_fn: InvariantFn, initial_state: StateCell) -> Option<usize> {
+    pub fn register(
+        &mut self,
+        invariant_fn: InvariantFn,
+        initial_state: StateCell,
+    ) -> Option<usize> {
         if self.invariant_count >= MAX_INVARIANTS {
             return None;
         }
@@ -1097,7 +1124,8 @@ impl MultiKernel {
             }
         }
 
-        let mut scratch: [[u8; STATE_CELL_SIZE]; MAX_INVARIANTS] = [[0u8; STATE_CELL_SIZE]; MAX_INVARIANTS];
+        let mut scratch: [[u8; STATE_CELL_SIZE]; MAX_INVARIANTS] =
+            [[0u8; STATE_CELL_SIZE]; MAX_INVARIANTS];
         for (i, s) in scratch.iter_mut().enumerate().take(self.invariant_count) {
             s.copy_from_slice(self.states[i].as_bytes());
         }
@@ -1265,7 +1293,11 @@ impl<I: Invariant + Clone> TenantKernel<I> {
     }
 
     #[inline]
-    pub fn register_tenant(&mut self, tenant_id: TenantId, initial_state: StateCell) -> Option<usize> {
+    pub fn register_tenant(
+        &mut self,
+        tenant_id: TenantId,
+        initial_state: StateCell,
+    ) -> Option<usize> {
         if self.tenant_count >= MAX_TENANTS {
             return None;
         }
@@ -1278,7 +1310,8 @@ impl<I: Invariant + Clone> TenantKernel<I> {
 
     #[inline]
     fn find_tenant(&self, tenant_id: TenantId) -> Option<usize> {
-        (0..self.tenant_count).find(|&i| self.domains[i].active && self.domains[i].tenant_id == tenant_id)
+        (0..self.tenant_count)
+            .find(|&i| self.domains[i].active && self.domains[i].tenant_id == tenant_id)
     }
 
     #[inline]
@@ -1289,7 +1322,9 @@ impl<I: Invariant + Clone> TenantKernel<I> {
         deps: &[FactId],
         payload: &[u8],
     ) -> Result<(), AdmitError> {
-        let idx = self.find_tenant(tenant_id).ok_or(AdmitError::MalformedFact)?;
+        let idx = self
+            .find_tenant(tenant_id)
+            .ok_or(AdmitError::MalformedFact)?;
         let domain = &mut self.domains[idx];
 
         if !deps.is_empty() {
@@ -1314,7 +1349,8 @@ impl<I: Invariant + Clone> TenantKernel<I> {
 
     #[inline(always)]
     pub fn clock(&self, tenant_id: TenantId) -> Option<&CausalClock> {
-        self.find_tenant(tenant_id).map(|idx| &self.domains[idx].frontier.clock)
+        self.find_tenant(tenant_id)
+            .map(|idx| &self.domains[idx].frontier.clock)
     }
 
     #[inline(always)]
@@ -1324,7 +1360,8 @@ impl<I: Invariant + Clone> TenantKernel<I> {
 
     #[inline(always)]
     pub fn saturation(&self, tenant_id: TenantId) -> Option<f32> {
-        self.find_tenant(tenant_id).map(|idx| self.domains[idx].saturation())
+        self.find_tenant(tenant_id)
+            .map(|idx| self.domains[idx].saturation())
     }
 
     #[inline(always)]
@@ -1434,8 +1471,16 @@ mod tests {
         kernel.admit(2, &fact_b1, &[], &payload_b1).unwrap();
 
         // Verify isolated state
-        let s_a = kernel.state(1).unwrap().cast_ref::<ConservationState>().unwrap();
-        let s_b = kernel.state(2).unwrap().cast_ref::<ConservationState>().unwrap();
+        let s_a = kernel
+            .state(1)
+            .unwrap()
+            .cast_ref::<ConservationState>()
+            .unwrap();
+        let s_b = kernel
+            .state(2)
+            .unwrap()
+            .cast_ref::<ConservationState>()
+            .unwrap();
         assert_eq!(s_a.balance, 150);
         assert_eq!(s_b.balance, 600);
 

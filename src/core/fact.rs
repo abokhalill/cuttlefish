@@ -1,8 +1,8 @@
 //! Fact: immutable, content-addressed state transition record.
 //! Layout: [FactHeader:64][deps:N*32][payload:M]
 
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 use super::topology::FactId;
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_DEPS: usize = 8;
 

@@ -80,12 +80,7 @@ pub struct ConvergenceWitness {
 }
 
 impl ConvergenceWitness {
-    pub fn verify<F>(
-        initial: &[u8; 64],
-        deltas: &[[u8; 16]],
-        apply: F,
-        _max_orderings: u32,
-    ) -> Self
+    pub fn verify<F>(initial: &[u8; 64], deltas: &[[u8; 16]], apply: F, _max_orderings: u32) -> Self
     where
         F: Fn(&[u8], &mut [u8]) -> Result<(), ()>,
     {
@@ -164,8 +159,8 @@ pub struct AssociativityProof {
     pub a: [u8; 64],
     pub b: [u8; 64],
     pub c: [u8; 64],
-    pub ab_c: [u8; 64],  // (a ⊔ b) ⊔ c
-    pub a_bc: [u8; 64],  // a ⊔ (b ⊔ c)
+    pub ab_c: [u8; 64], // (a ⊔ b) ⊔ c
+    pub a_bc: [u8; 64], // a ⊔ (b ⊔ c)
     pub holds: bool,
 }
 

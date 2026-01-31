@@ -57,31 +57,37 @@ impl Invariant for TotalSupplyInvariant {
         }
 
         let delta = i128::from_le_bytes([
-            payload[0], payload[1], payload[2], payload[3],
-            payload[4], payload[5], payload[6], payload[7],
-            payload[8], payload[9], payload[10], payload[11],
-            payload[12], payload[13], payload[14], payload[15],
+            payload[0],
+            payload[1],
+            payload[2],
+            payload[3],
+            payload[4],
+            payload[5],
+            payload[6],
+            payload[7],
+            payload[8],
+            payload[9],
+            payload[10],
+            payload[11],
+            payload[12],
+            payload[13],
+            payload[14],
+            payload[15],
         ]);
 
         let balance = i128::from_le_bytes([
-            state[0], state[1], state[2], state[3],
-            state[4], state[5], state[6], state[7],
-            state[8], state[9], state[10], state[11],
-            state[12], state[13], state[14], state[15],
+            state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7],
+            state[8], state[9], state[10], state[11], state[12], state[13], state[14], state[15],
         ]);
 
         let min = i128::from_le_bytes([
-            state[16], state[17], state[18], state[19],
-            state[20], state[21], state[22], state[23],
-            state[24], state[25], state[26], state[27],
-            state[28], state[29], state[30], state[31],
+            state[16], state[17], state[18], state[19], state[20], state[21], state[22], state[23],
+            state[24], state[25], state[26], state[27], state[28], state[29], state[30], state[31],
         ]);
 
         let max = i128::from_le_bytes([
-            state[32], state[33], state[34], state[35],
-            state[36], state[37], state[38], state[39],
-            state[40], state[41], state[42], state[43],
-            state[44], state[45], state[46], state[47],
+            state[32], state[33], state[34], state[35], state[36], state[37], state[38], state[39],
+            state[40], state[41], state[42], state[43], state[44], state[45], state[46], state[47],
         ]);
 
         let new_balance = balance.wrapping_add(delta);

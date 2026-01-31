@@ -67,7 +67,7 @@ fn make_payload(delta: i128) -> [u8; 16] {
 }
 
 /// Generate a set of causal facts organized as independent chains.
-/// 
+///
 /// Structure: Multiple independent chains of length `chain_len`.
 /// This ensures that topological reordering only affects the order
 /// *between* chains, not within chains, keeping dependencies fresh
@@ -82,28 +82,28 @@ fn make_payload(delta: i128) -> [u8; 16] {
 fn generate_causal_chains(num_chains: usize, chain_len: usize, seed: u64) -> Vec<CausalFact> {
     let mut rng = SimpleLcg::new(seed);
     let mut facts: Vec<CausalFact> = Vec::with_capacity(num_chains * chain_len);
-    
+
     for chain_idx in 0..num_chains {
         let mut prev_id: Option<FactId> = None;
-        
+
         for pos in 0..chain_len {
             let fact_idx = chain_idx * chain_len + pos;
             let fact_id = make_fact_id(fact_idx as u64);
-            
+
             let deps = match prev_id {
                 Some(pid) => vec![pid],
                 None => vec![],
             };
-            
+
             // Generate a small delta payload
             let delta: i128 = if rng.next() % 2 == 0 { 1 } else { -1 };
             let payload = make_payload(delta).to_vec();
-            
+
             facts.push(CausalFact::new(fact_id, deps, payload));
             prev_id = Some(fact_id);
         }
     }
-    
+
     facts
 }
 
@@ -111,14 +111,14 @@ fn generate_causal_chains(num_chains: usize, chain_len: usize, seed: u64) -> Vec
 fn generate_independent_facts(count: usize, seed: u64) -> Vec<CausalFact> {
     let mut rng = SimpleLcg::new(seed);
     let mut facts: Vec<CausalFact> = Vec::with_capacity(count);
-    
+
     for i in 0..count {
         let fact_id = make_fact_id(i as u64);
         let delta: i128 = if rng.next() % 2 == 0 { 1 } else { -1 };
         let payload = make_payload(delta).to_vec();
         facts.push(CausalFact::root(fact_id, payload));
     }
-    
+
     facts
 }
 
@@ -128,11 +128,8 @@ fn generate_causal_ordering(facts: &[CausalFact], seed: u64) -> Vec<usize> {
     let mut rng = SimpleLcg::new(seed);
 
     // Build dependency graph
-    let id_to_idx: HashMap<FactId, usize> = facts
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (f.id, i))
-        .collect();
+    let id_to_idx: HashMap<FactId, usize> =
+        facts.iter().enumerate().map(|(i, f)| (f.id, i)).collect();
 
     let mut in_degree = vec![0usize; n];
     let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -227,7 +224,11 @@ impl SimulatedNode {
                 // (no invariant violations since we use small deltas)
                 panic!(
                     "{}: Unexpected admission error: {:?} for fact {:02x}{:02x}... with {} deps",
-                    self.name, e, fact.id[0], fact.id[1], deps.len()
+                    self.name,
+                    e,
+                    fact.id[0],
+                    fact.id[1],
+                    deps.len()
                 );
             }
         }
@@ -294,7 +295,10 @@ fn test_three_node_convergence_1000_facts() {
     );
 
     println!("✓ Three-node convergence verified for {} facts", fact_count);
-    println!("  Final state hash: {:02x}{:02x}{:02x}{:02x}...", hash_a[0], hash_a[1], hash_a[2], hash_a[3]);
+    println!(
+        "  Final state hash: {:02x}{:02x}{:02x}{:02x}...",
+        hash_a[0], hash_a[1], hash_a[2], hash_a[3]
+    );
 }
 
 #[test]
@@ -332,7 +336,10 @@ fn test_three_node_convergence_10000_facts() {
     assert_eq!(hash_b, hash_c, "ACC theorem violation: B != C");
 
     println!("✓ Three-node convergence verified for {} facts", fact_count);
-    println!("  Final state hash: {:02x}{:02x}{:02x}{:02x}...", hash_a[0], hash_a[1], hash_a[2], hash_a[3]);
+    println!(
+        "  Final state hash: {:02x}{:02x}{:02x}{:02x}...",
+        hash_a[0], hash_a[1], hash_a[2], hash_a[3]
+    );
 }
 
 #[test]
@@ -424,7 +431,10 @@ fn test_concurrent_increments_convergence() {
     assert_eq!(hash1, hash2, "Forward vs reverse order must converge");
     assert_eq!(hash2, hash3, "Reverse vs shuffled order must converge");
 
-    println!("✓ Concurrent increments convergence verified ({} facts)", NUM_INCREMENTS);
+    println!(
+        "✓ Concurrent increments convergence verified ({} facts)",
+        NUM_INCREMENTS
+    );
 }
 
 #[test]

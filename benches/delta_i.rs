@@ -40,11 +40,13 @@ fn bench_conservation_hot_path(c: &mut Criterion) {
     };
 
     c.bench_function("delta_i_conservation_unbounded", |b| {
-        b.iter(|| {
-            black_box(invariant.apply(black_box(&payload_buf), black_box(&mut state_buf)))
-        })
+        b.iter(|| black_box(invariant.apply(black_box(&payload_buf), black_box(&mut state_buf))))
     });
 }
 
-criterion_group!(benches, bench_conservation_delta_i, bench_conservation_hot_path);
+criterion_group!(
+    benches,
+    bench_conservation_delta_i,
+    bench_conservation_hot_path
+);
 criterion_main!(benches);

@@ -192,7 +192,8 @@ fn test_wal_recovery_matches_kernel_state() {
 
     // Compute recovered state hash
     let recovered_state_hash = Checkpoint::compute_state_hash(&recovery.state);
-    let recovered_tiered_hash = Checkpoint::compute_tiered_hash(&recovery.state, &recovery.frontier);
+    let recovered_tiered_hash =
+        Checkpoint::compute_tiered_hash(&recovery.state, &recovery.frontier);
 
     // State hashes MUST match exactly
     assert_eq!(
@@ -316,7 +317,11 @@ fn test_corrupted_hash_detection() {
     // Corrupt the 6th entry's payload (flip a byte)
     {
         use std::io::{Seek, SeekFrom};
-        let mut file = File::options().read(true).write(true).open(&wal_path).unwrap();
+        let mut file = File::options()
+            .read(true)
+            .write(true)
+            .open(&wal_path)
+            .unwrap();
         let entry_size = WalEntryHeader::SIZE + 16;
         let corrupt_offset = 5 * entry_size + WalEntryHeader::SIZE + 5; // 6th entry, 5 bytes into payload
         file.seek(SeekFrom::Start(corrupt_offset as u64)).unwrap();

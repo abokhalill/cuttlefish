@@ -13,12 +13,13 @@ mod ring;
 mod worker;
 
 pub use arena::{
-    ArenaError, ArenaSlot, SlotHeader, SlotIndex, SlotState, WALArena,
-    ARENA_SIZE, INVALID_SLOT, PAYLOAD_CAPACITY, SLOTS_PER_ARENA, SLOT_SIZE,
-    REFCOUNT_DUAL, REFCOUNT_FREE, REFCOUNT_NETWORK_ONLY, REFCOUNT_PERSIST_ONLY,
+    ArenaError, ArenaSlot, SlotHeader, SlotIndex, SlotState, WALArena, ARENA_SIZE, INVALID_SLOT,
+    PAYLOAD_CAPACITY, REFCOUNT_DUAL, REFCOUNT_FREE, REFCOUNT_NETWORK_ONLY, REFCOUNT_PERSIST_ONLY,
+    SLOTS_PER_ARENA, SLOT_SIZE,
 };
 pub use recovery::{BootstrapEngine, RecoveryError, RecoveryResult, WalEntryHeader, WalRecovery};
 pub use ring::{PersistenceEntry, SPSCBuffer, SPSCConsumer, SPSCProducer};
 pub use worker::{
-    ArenaPersistenceWorker, ArenaSlotEntry, PersistenceFrontier, PersistenceWorker, SubmissionBuffer,
+    ArenaPersistenceWorker, ArenaSlotEntry, PersistenceFrontier, PersistenceWorker,
+    SubmissionBuffer,
 };

@@ -53,7 +53,10 @@ impl Attestation {
         for i in 0..32 {
             signature[i] = validator[i] ^ state_hash[i];
         }
-        Self { validator, signature }
+        Self {
+            validator,
+            signature,
+        }
     }
 }
 
@@ -177,20 +180,17 @@ impl CheckpointHeader {
 
         let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         let wal_sequence = u64::from_le_bytes([
-            bytes[8], bytes[9], bytes[10], bytes[11],
-            bytes[12], bytes[13], bytes[14], bytes[15],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
         ]);
         let wal_offset = u64::from_le_bytes([
-            bytes[16], bytes[17], bytes[18], bytes[19],
-            bytes[20], bytes[21], bytes[22], bytes[23],
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23],
         ]);
 
         let mut tiered_hash = [0u8; 32];
         tiered_hash.copy_from_slice(&bytes[24..56]);
 
         let timestamp = u64::from_le_bytes([
-            bytes[56], bytes[57], bytes[58], bytes[59],
-            bytes[60], bytes[61], bytes[62], bytes[63],
+            bytes[56], bytes[57], bytes[58], bytes[59], bytes[60], bytes[61], bytes[62], bytes[63],
         ]);
 
         Some(Self {
@@ -444,7 +444,10 @@ pub mod wal_truncate {
         if ret == 0 {
             Ok(())
         } else {
-            Err(Error::other(format!("fallocate failed: {}", std::io::Error::last_os_error())))
+            Err(Error::other(format!(
+                "fallocate failed: {}",
+                std::io::Error::last_os_error()
+            )))
         }
     }
 
@@ -496,7 +499,9 @@ impl CheckpointManager {
 
     /// Read the latest checkpoint from disk.
     /// Returns None if checkpoint is missing, corrupt, or fails integrity verification.
-    pub fn read_checkpoint(&self) -> std::io::Result<Option<(CheckpointHeader, StateCell, CausalClock)>> {
+    pub fn read_checkpoint(
+        &self,
+    ) -> std::io::Result<Option<(CheckpointHeader, StateCell, CausalClock)>> {
         use std::io::Read;
 
         let mut file = match std::fs::File::open(&self.checkpoint_path) {
@@ -656,7 +661,11 @@ mod tests {
 
         // Verify works
         assert!(Checkpoint::verify_tiered_hash(&state, &frontier, &hash1));
-        assert!(!Checkpoint::verify_tiered_hash(&state, &frontier, &[0xFF; 32]));
+        assert!(!Checkpoint::verify_tiered_hash(
+            &state,
+            &frontier,
+            &[0xFF; 32]
+        ));
     }
 
     #[test]

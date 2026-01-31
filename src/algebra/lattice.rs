@@ -22,8 +22,20 @@ pub trait LatticeMerge {
 }
 
 /// Max-lattice. The workhorse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Default,
+    FromBytes,
+    IntoBytes,
+    KnownLayout,
+    Immutable,
+)]
 #[repr(C)]
 pub struct MaxU64(pub u64);
 
@@ -70,8 +82,20 @@ impl LatticeMerge for MaxU64 {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Default,
+    FromBytes,
+    IntoBytes,
+    KnownLayout,
+    Immutable,
+)]
 #[repr(C)]
 pub struct MaxU128(pub u128);
 
@@ -117,8 +141,9 @@ impl LatticeMerge for MaxU128 {
 }
 
 /// GSet via 512-bit bitset. Join = OR.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, FromBytes, IntoBytes, KnownLayout, Immutable,
+)]
 #[repr(C)]
 pub struct GSetLattice {
     pub bits: [u64; 8],
@@ -227,8 +252,9 @@ impl LatticeMerge for GSetLattice {
 }
 
 /// PN-Counter: value = positive - negative. Join = component-wise max.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, FromBytes, IntoBytes, KnownLayout, Immutable,
+)]
 #[repr(C)]
 pub struct PNCounter {
     pub positive: u64,
@@ -294,8 +320,9 @@ impl LatticeMerge for PNCounter {
 }
 
 /// Lex pair for deterministic tie-breaking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, FromBytes, IntoBytes, KnownLayout, Immutable,
+)]
 #[repr(C)]
 pub struct LexPair {
     pub value: u64,

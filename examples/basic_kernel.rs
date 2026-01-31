@@ -1,7 +1,7 @@
 //! Basic kernel usage: admit facts, check causality, query state.
 
-use ctfs::core::{Kernel, StateCell, AdmitError};
 use ctfs::core::topology::FactId;
+use ctfs::core::{AdmitError, Kernel, StateCell};
 use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
@@ -17,12 +17,16 @@ fn main() {
     // 3. Admit facts (state transitions)
     let fact1: FactId = [1u8; 32];
     let delta1 = 500i128.to_le_bytes(); // +500
-    kernel.admit_raw(&fact1, &[], &delta1).expect("fact1 should succeed");
+    kernel
+        .admit_raw(&fact1, &[], &delta1)
+        .expect("fact1 should succeed");
 
     // 4. Admit with causal dependency
     let fact2: FactId = [2u8; 32];
     let delta2 = (-200i128).to_le_bytes(); // -200
-    kernel.admit_raw(&fact2, &[fact1], &delta2).expect("fact2 depends on fact1");
+    kernel
+        .admit_raw(&fact2, &[fact1], &delta2)
+        .expect("fact2 depends on fact1");
 
     // 5. Query final state
     let state = kernel.state().cast_ref::<ConservationState>().unwrap();

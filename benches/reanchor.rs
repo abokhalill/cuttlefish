@@ -101,10 +101,8 @@ fn bench_reanchor_with_replay_10(c: &mut Criterion) {
 
         b.iter(|| {
             // Convert to slice of references for the API
-            let refs: Vec<(&FactId, &[u8])> = new_facts
-                .iter()
-                .map(|(id, p)| (id, p.as_slice()))
-                .collect();
+            let refs: Vec<(&FactId, &[u8])> =
+                new_facts.iter().map(|(id, p)| (id, p.as_slice())).collect();
 
             let result = kernel.re_anchor(black_box(&checkpoint), black_box(&refs));
             black_box(result)
@@ -140,10 +138,8 @@ fn bench_reanchor_with_replay_100(c: &mut Criterion) {
         let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), initial_state);
 
         b.iter(|| {
-            let refs: Vec<(&FactId, &[u8])> = new_facts
-                .iter()
-                .map(|(id, p)| (id, p.as_slice()))
-                .collect();
+            let refs: Vec<(&FactId, &[u8])> =
+                new_facts.iter().map(|(id, p)| (id, p.as_slice())).collect();
 
             let result = kernel.re_anchor(black_box(&checkpoint), black_box(&refs));
             black_box(result)
@@ -187,10 +183,8 @@ fn bench_full_reanchor_cycle(c: &mut Criterion) {
             .collect();
 
         b.iter(|| {
-            let refs: Vec<(&FactId, &[u8])> = new_facts
-                .iter()
-                .map(|(id, p)| (id, p.as_slice()))
-                .collect();
+            let refs: Vec<(&FactId, &[u8])> =
+                new_facts.iter().map(|(id, p)| (id, p.as_slice())).collect();
 
             let result = kernel.re_anchor(&checkpoint, &refs);
             black_box(result)

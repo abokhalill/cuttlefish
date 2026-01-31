@@ -62,7 +62,11 @@ fn bench_causal_diffusion(c: &mut Criterion) {
                 let received = NetworkMessage::decode(&wire_bytes).unwrap();
 
                 // Step 4: Admit on Node B
-                if let NetworkMessage::PushFact { fact_id: id, payload: p } = received {
+                if let NetworkMessage::PushFact {
+                    fact_id: id,
+                    payload: p,
+                } = received
+                {
                     kernel_b.admit_raw(&id, &[], &p).unwrap();
                 }
 
@@ -158,7 +162,11 @@ fn bench_threaded_diffusion(c: &mut Criterion) {
                     let wire_bytes = rx.recv().unwrap();
                     let received = NetworkMessage::decode(&wire_bytes).unwrap();
 
-                    if let NetworkMessage::PushFact { fact_id: id, payload: p } = received {
+                    if let NetworkMessage::PushFact {
+                        fact_id: id,
+                        payload: p,
+                    } = received
+                    {
                         kernel_b.admit_raw(&id, &[], &p).unwrap();
                     }
                 });

@@ -21,9 +21,9 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::mpsc;
 use tokio::time::interval;
 
-use crate::core::topology::{CausalClock, FactId};
 #[cfg(all(feature = "persistence", target_os = "linux"))]
 use crate::core::persistence::WALArena;
+use crate::core::topology::{CausalClock, FactId};
 
 use super::protocol::{NetworkMessage, WireHeader};
 
@@ -73,7 +73,10 @@ pub enum NetworkEvent {
     /// Received a fact from peer.
     FactReceived { fact_id: FactId, payload: Vec<u8> },
     /// Peer requested facts.
-    PullRequested { peer: PeerAddr, fact_ids: Vec<FactId> },
+    PullRequested {
+        peer: PeerAddr,
+        fact_ids: Vec<FactId>,
+    },
     /// Network error.
     Error { message: String },
 }
@@ -103,11 +106,17 @@ impl NetworkWorker {
 
         tokio::spawn(worker.run());
 
-        Ok(Self { command_tx, event_rx })
+        Ok(Self {
+            command_tx,
+            event_rx,
+        })
     }
 
     /// Send a command to the worker.
-    pub async fn send(&self, cmd: NetworkCommand) -> Result<(), mpsc::error::SendError<NetworkCommand>> {
+    pub async fn send(
+        &self,
+        cmd: NetworkCommand,
+    ) -> Result<(), mpsc::error::SendError<NetworkCommand>> {
         self.command_tx.send(cmd).await
     }
 
@@ -117,8 +126,13 @@ impl NetworkWorker {
     }
 
     /// Broadcast a fact to all peers.
-    pub async fn broadcast_fact(&self, fact_id: FactId, payload: Vec<u8>) -> Result<(), mpsc::error::SendError<NetworkCommand>> {
-        self.send(NetworkCommand::BroadcastFact { fact_id, payload }).await
+    pub async fn broadcast_fact(
+        &self,
+        fact_id: FactId,
+        payload: Vec<u8>,
+    ) -> Result<(), mpsc::error::SendError<NetworkCommand>> {
+        self.send(NetworkCommand::BroadcastFact { fact_id, payload })
+            .await
     }
 
     /// Shutdown the worker.
@@ -140,9 +154,12 @@ impl WorkerInner {
         let tcp_listener = match TcpListener::bind(self.config.tcp_bind).await {
             Ok(l) => l,
             Err(e) => {
-                let _ = self.event_tx.send(NetworkEvent::Error {
-                    message: format!("TCP bind failed: {}", e),
-                }).await;
+                let _ = self
+                    .event_tx
+                    .send(NetworkEvent::Error {
+                        message: format!("TCP bind failed: {}", e),
+                    })
+                    .await;
                 return;
             }
         };
@@ -150,9 +167,12 @@ impl WorkerInner {
         let udp_socket = match UdpSocket::bind(self.config.udp_bind).await {
             Ok(s) => Arc::new(s),
             Err(e) => {
-                let _ = self.event_tx.send(NetworkEvent::Error {
-                    message: format!("UDP bind failed: {}", e),
-                }).await;
+                let _ = self
+                    .event_tx
+                    .send(NetworkEvent::Error {
+                        message: format!("UDP bind failed: {}", e),
+                    })
+                    .await;
                 return;
             }
         };
@@ -235,10 +255,14 @@ impl WorkerInner {
 
             match NetworkMessage::decode(&full_msg) {
                 Ok(NetworkMessage::PushFact { fact_id, payload }) => {
-                    let _ = event_tx.send(NetworkEvent::FactReceived { fact_id, payload }).await;
+                    let _ = event_tx
+                        .send(NetworkEvent::FactReceived { fact_id, payload })
+                        .await;
                 }
                 Ok(NetworkMessage::PullRequest { fact_ids }) => {
-                    let _ = event_tx.send(NetworkEvent::PullRequested { peer, fact_ids }).await;
+                    let _ = event_tx
+                        .send(NetworkEvent::PullRequested { peer, fact_ids })
+                        .await;
                 }
                 _ => {}
             }
@@ -249,7 +273,10 @@ impl WorkerInner {
         match NetworkMessage::decode(data) {
             Ok(NetworkMessage::GossipClock(clock)) => {
                 self.peer_clocks.insert(peer, clock);
-                let _ = self.event_tx.send(NetworkEvent::GossipReceived { peer, clock }).await;
+                let _ = self
+                    .event_tx
+                    .send(NetworkEvent::GossipReceived { peer, clock })
+                    .await;
             }
             _ => {}
         }
@@ -334,9 +361,12 @@ impl ZeroCopyNetworkWorker {
         let udp_socket = match UdpSocket::bind(self.config.udp_bind).await {
             Ok(s) => Arc::new(s),
             Err(e) => {
-                let _ = self.event_tx.send(NetworkEvent::Error {
-                    message: format!("UDP bind failed: {}", e),
-                }).await;
+                let _ = self
+                    .event_tx
+                    .send(NetworkEvent::Error {
+                        message: format!("UDP bind failed: {}", e),
+                    })
+                    .await;
                 return;
             }
         };
@@ -426,13 +456,7 @@ impl ZeroCopyNetworkHandle {
         let (broadcast_tx, broadcast_rx) = mpsc::channel(4096);
         let (event_tx, event_rx) = mpsc::channel(1024);
 
-        let worker = ZeroCopyNetworkWorker::new(
-            config,
-            arena,
-            local_clock,
-            broadcast_rx,
-            event_tx,
-        );
+        let worker = ZeroCopyNetworkWorker::new(config, arena, local_clock, broadcast_rx, event_tx);
 
         tokio::spawn(worker.run());
 
@@ -445,13 +469,19 @@ impl ZeroCopyNetworkHandle {
     /// Queue a fact for zero-copy broadcast.
     /// The entry contains a slot index into the WALArena.
     #[inline]
-    pub async fn broadcast(&self, entry: ZeroCopyBroadcastEntry) -> Result<(), mpsc::error::SendError<ZeroCopyBroadcastEntry>> {
+    pub async fn broadcast(
+        &self,
+        entry: ZeroCopyBroadcastEntry,
+    ) -> Result<(), mpsc::error::SendError<ZeroCopyBroadcastEntry>> {
         self.broadcast_tx.send(entry).await
     }
 
     /// Try to queue a fact for broadcast (non-blocking).
     #[inline]
-    pub fn try_broadcast(&self, entry: ZeroCopyBroadcastEntry) -> Result<(), mpsc::error::TrySendError<ZeroCopyBroadcastEntry>> {
+    pub fn try_broadcast(
+        &self,
+        entry: ZeroCopyBroadcastEntry,
+    ) -> Result<(), mpsc::error::TrySendError<ZeroCopyBroadcastEntry>> {
         self.broadcast_tx.try_send(entry)
     }
 
@@ -540,11 +570,7 @@ impl BroadcastFrame {
     /// Encode a frame into a fixed buffer (no heap allocation).
     /// Returns the number of bytes written.
     #[inline]
-    pub fn encode_into(
-        buffer: &mut [u8],
-        fact_id: &FactId,
-        payload: &[u8],
-    ) -> Option<usize> {
+    pub fn encode_into(buffer: &mut [u8], fact_id: &FactId, payload: &[u8]) -> Option<usize> {
         let total_len = Self::HEADER_SIZE + payload.len();
         let padded_len = (total_len + 7) & !7; // Round up to 8-byte boundary
 
@@ -576,9 +602,8 @@ impl BroadcastFrame {
         let mut fact_id = [0u8; 32];
         fact_id.copy_from_slice(&buffer[..32]);
 
-        let payload_len = u32::from_le_bytes([
-            buffer[32], buffer[33], buffer[34], buffer[35],
-        ]) as usize;
+        let payload_len =
+            u32::from_le_bytes([buffer[32], buffer[33], buffer[34], buffer[35]]) as usize;
 
         if buffer.len() < Self::HEADER_SIZE + payload_len {
             return None;
@@ -640,11 +665,9 @@ impl SendBuffer {
     /// Returns true if successful, false if buffer full.
     #[inline]
     pub fn append_frame(&mut self, fact_id: &FactId, payload: &[u8]) -> bool {
-        if let Some(written) = BroadcastFrame::encode_into(
-            &mut self.data[self.len..],
-            fact_id,
-            payload,
-        ) {
+        if let Some(written) =
+            BroadcastFrame::encode_into(&mut self.data[self.len..], fact_id, payload)
+        {
             self.len += written;
             true
         } else {

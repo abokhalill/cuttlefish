@@ -2,11 +2,11 @@
 
 #[cfg(feature = "persistence")]
 mod checkpoint_tests {
-    use cuttlefish::core::checkpoint::{Checkpoint, CheckpointManager, CheckpointHeader};
-    use cuttlefish::core::state::StateCell;
+    use cuttlefish::core::checkpoint::{Checkpoint, CheckpointHeader, CheckpointManager};
     use cuttlefish::core::frontier::FrontierState;
-    use zerocopy::IntoBytes;
+    use cuttlefish::core::state::StateCell;
     use std::fs;
+    use zerocopy::IntoBytes;
 
     #[test]
     fn test_checkpoint_integrity_verification() {
@@ -135,7 +135,10 @@ mod checkpoint_tests {
 
         let manager = CheckpointManager::new(tmp_path);
         let result = manager.read_checkpoint();
-        assert!(result.is_err() || result.unwrap().is_none(), "Truncated file should fail");
+        assert!(
+            result.is_err() || result.unwrap().is_none(),
+            "Truncated file should fail"
+        );
 
         fs::remove_file(tmp_path).unwrap();
     }
@@ -167,7 +170,10 @@ mod checkpoint_tests {
         let hash1 = Checkpoint::compute_tiered_hash(&state1, &frontier_state);
         let hash2 = Checkpoint::compute_tiered_hash(&state2, &frontier_state);
 
-        assert_ne!(hash1, hash2, "Different state should produce different hash");
+        assert_ne!(
+            hash1, hash2,
+            "Different state should produce different hash"
+        );
     }
 
     #[test]
@@ -183,6 +189,9 @@ mod checkpoint_tests {
         let hash1 = Checkpoint::compute_tiered_hash(&state, &frontier1);
         let hash2 = Checkpoint::compute_tiered_hash(&state, &frontier2);
 
-        assert_ne!(hash1, hash2, "Different frontier should produce different hash");
+        assert_ne!(
+            hash1, hash2,
+            "Different frontier should produce different hash"
+        );
     }
 }

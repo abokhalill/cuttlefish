@@ -4,13 +4,13 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughpu
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Mutex;
 
+use cuttlefish::algebra::lattice::{GSetLattice, JoinSemilattice, LatticeMerge, MaxU64};
 use cuttlefish::core::kernel::Kernel;
 use cuttlefish::core::state::StateCell;
 use cuttlefish::core::topology::FactId;
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
-use cuttlefish::invariants::monotonic::{MaxInvariant, GCounterInvariant};
 use cuttlefish::invariants::graph::GGraphInvariant;
-use cuttlefish::algebra::lattice::{MaxU64, GSetLattice, JoinSemilattice, LatticeMerge};
+use cuttlefish::invariants::monotonic::{GCounterInvariant, MaxInvariant};
+use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn bench_raw_i128_add(c: &mut Criterion) {
@@ -28,9 +28,7 @@ fn bench_atomic_i64_add(c: &mut Criterion) {
     let counter = AtomicI64::new(0);
 
     c.bench_function("baseline_atomic_i64_add", |b| {
-        b.iter(|| {
-            counter.fetch_add(black_box(1), Ordering::Relaxed)
-        })
+        b.iter(|| counter.fetch_add(black_box(1), Ordering::Relaxed))
     });
 }
 
@@ -132,9 +130,7 @@ fn bench_lattice_max_join(c: &mut Criterion) {
     let b = MaxU64(200);
 
     c.bench_function("lattice_max_join", |b_iter| {
-        b_iter.iter(|| {
-            black_box(black_box(a).join(black_box(&b)))
-        })
+        b_iter.iter(|| black_box(black_box(a).join(black_box(&b))))
     });
 }
 
@@ -148,9 +144,7 @@ fn bench_lattice_gset_join(c: &mut Criterion) {
     }
 
     c.bench_function("lattice_gset_join", |b_iter| {
-        b_iter.iter(|| {
-            black_box(black_box(a).join(black_box(&b)))
-        })
+        b_iter.iter(|| black_box(black_box(a).join(black_box(&b))))
     });
 }
 
@@ -228,9 +222,7 @@ fn bench_causal_clock_dominates(c: &mut Criterion) {
     }
 
     c.bench_function("causal_clock_dominates", |b| {
-        b.iter(|| {
-            black_box(black_box(&clock_a).dominates(black_box(&clock_b)))
-        })
+        b.iter(|| black_box(black_box(&clock_a).dominates(black_box(&clock_b))))
     });
 }
 
@@ -303,9 +295,12 @@ criterion_group!(
     bench_exact_index_contains,
 );
 
-criterion_group!(
-    throughput,
-    bench_throughput_conservation,
-);
+criterion_group!(throughput, bench_throughput_conservation,);
 
-criterion_main!(baselines, cuttlefish_invariants, lattice_ops, causal_ops, throughput);
+criterion_main!(
+    baselines,
+    cuttlefish_invariants,
+    lattice_ops,
+    causal_ops,
+    throughput
+);

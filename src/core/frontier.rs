@@ -1,7 +1,7 @@
 //! Frontier: the minimal antichain of maximal observed FactIds.
 
-use arrayvec::ArrayVec;
 use super::topology::{CausalClock, FactId};
+use arrayvec::ArrayVec;
 
 /// Antichain width limit—keeps frontier operations O(1).
 pub const MAX_FRONTIER_WIDTH: usize = 8;
@@ -107,10 +107,7 @@ mod tests {
 
     #[test]
     fn test_build_deps_clock() {
-        let deps = [
-            [1u8; 32],
-            [2u8; 32],
-        ];
+        let deps = [[1u8; 32], [2u8; 32]];
 
         let clock = build_deps_clock(&deps);
 

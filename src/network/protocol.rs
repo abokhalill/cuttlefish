@@ -126,7 +126,10 @@ impl PullRequestPayload {
     pub const HEADER_SIZE: usize = 8;
 
     pub fn new(count: u32) -> Self {
-        Self { count, _pad: [0u8; 4] }
+        Self {
+            count,
+            _pad: [0u8; 4],
+        }
     }
 }
 
@@ -204,8 +207,8 @@ impl NetworkMessage {
             .try_into()
             .map_err(|_| ProtocolError::InsufficientData)?;
 
-        let header = WireHeader::from_bytes(&header_bytes)
-            .ok_or(ProtocolError::MalformedPayload)?;
+        let header =
+            WireHeader::from_bytes(&header_bytes).ok_or(ProtocolError::MalformedPayload)?;
 
         let msg_type = header.validate()?;
         let payload_len = header.payload_len as usize;
@@ -273,7 +276,8 @@ impl NetworkMessage {
                     let mut id = [0u8; 32];
                     id.copy_from_slice(&payload[offset..offset + 32]);
                     offset += 32;
-                    let len = u32::from_le_bytes(payload[offset..offset + 4].try_into().unwrap()) as usize;
+                    let len = u32::from_le_bytes(payload[offset..offset + 4].try_into().unwrap())
+                        as usize;
                     offset += 4;
                     if offset + len > payload.len() {
                         return Err(ProtocolError::MalformedPayload);
@@ -336,7 +340,10 @@ mod tests {
         let decoded = NetworkMessage::decode(&encoded).unwrap();
 
         match decoded {
-            NetworkMessage::PushFact { fact_id: id, payload: p } => {
+            NetworkMessage::PushFact {
+                fact_id: id,
+                payload: p,
+            } => {
                 assert_eq!(id, fact_id);
                 assert_eq!(p, payload);
             }
@@ -348,7 +355,9 @@ mod tests {
     fn test_pull_request_roundtrip() {
         let fact_ids = vec![[1u8; 32], [2u8; 32], [3u8; 32]];
 
-        let msg = NetworkMessage::PullRequest { fact_ids: fact_ids.clone() };
+        let msg = NetworkMessage::PullRequest {
+            fact_ids: fact_ids.clone(),
+        };
         let encoded = msg.encode();
         let decoded = NetworkMessage::decode(&encoded).unwrap();
 

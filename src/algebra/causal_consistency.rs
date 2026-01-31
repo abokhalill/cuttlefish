@@ -6,7 +6,12 @@ use crate::core::topology::FactId;
 pub trait CausallyConsistentInvariant {
     type State: JoinSemilattice + Clone + PartialEq;
 
-    fn apply_pure(&self, fact_id: &FactId, payload: &[u8], state: &Self::State) -> Option<Self::State>;
+    fn apply_pure(
+        &self,
+        fact_id: &FactId,
+        payload: &[u8],
+        state: &Self::State,
+    ) -> Option<Self::State>;
 
     fn bottom(&self) -> Self::State;
 
@@ -224,11 +229,8 @@ fn topological_sort(facts: &[CausalFact]) -> Option<Vec<usize>> {
 
     // Build adjacency list and compute in-degrees
     // Create a map from FactId to index
-    let id_to_idx: std::collections::HashMap<FactId, usize> = facts
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (f.id, i))
-        .collect();
+    let id_to_idx: std::collections::HashMap<FactId, usize> =
+        facts.iter().enumerate().map(|(i, f)| (f.id, i)).collect();
 
     for (i, fact) in facts.iter().enumerate() {
         for dep in &fact.deps {
@@ -273,11 +275,8 @@ fn generate_reverse_causal_order(facts: &[CausalFact], forward: &[usize]) -> Vec
     // This is a valid reordering because we only swap causally-independent facts
 
     let n = facts.len();
-    let id_to_idx: std::collections::HashMap<FactId, usize> = facts
-        .iter()
-        .enumerate()
-        .map(|(i, f)| (f.id, i))
-        .collect();
+    let id_to_idx: std::collections::HashMap<FactId, usize> =
+        facts.iter().enumerate().map(|(i, f)| (f.id, i)).collect();
 
     // Track which facts have been "placed" in the reverse order
     let mut placed = vec![false; n];
@@ -351,7 +350,12 @@ mod tests {
     impl CausallyConsistentInvariant for MaxCounterInvariant {
         type State = CounterState;
 
-        fn apply_pure(&self, _fact_id: &FactId, payload: &[u8], state: &Self::State) -> Option<Self::State> {
+        fn apply_pure(
+            &self,
+            _fact_id: &FactId,
+            payload: &[u8],
+            state: &Self::State,
+        ) -> Option<Self::State> {
             if payload.len() < 8 {
                 return None;
             }

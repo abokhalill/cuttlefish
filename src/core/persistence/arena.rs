@@ -46,7 +46,8 @@ impl CachePaddedAtomicU32 {
         success: Ordering,
         failure: Ordering,
     ) -> Result<u32, u32> {
-        self.value.compare_exchange_weak(current, new, success, failure)
+        self.value
+            .compare_exchange_weak(current, new, success, failure)
     }
 }
 
@@ -229,7 +230,10 @@ impl WALArena {
     ///
     /// Returns the slot index or ArenaError::Full if no slots available.
     #[inline]
-    pub fn acquire_slot_with_refcount(&self, initial_refcount: u32) -> Result<SlotIndex, ArenaError> {
+    pub fn acquire_slot_with_refcount(
+        &self,
+        initial_refcount: u32,
+    ) -> Result<SlotIndex, ArenaError> {
         let hint = self.alloc_hint.load(Ordering::Relaxed) as usize;
 
         // Search from hint, wrapping around.
@@ -258,17 +262,21 @@ impl WALArena {
                         let slot_idx = (word_idx * 64 + bit_idx) as SlotIndex;
 
                         // Update hint for next allocation.
-                        self.alloc_hint.store(slot_idx.wrapping_add(1), Ordering::Relaxed);
+                        self.alloc_hint
+                            .store(slot_idx.wrapping_add(1), Ordering::Relaxed);
                         self.free_count.fetch_sub(1, Ordering::Relaxed);
 
                         // Set initial refcount atomically.
-                        self.refcounts[slot_idx as usize].store(initial_refcount, Ordering::Release);
+                        self.refcounts[slot_idx as usize]
+                            .store(initial_refcount, Ordering::Release);
 
                         unsafe {
                             let slot = &mut (*self.slots.get())[slot_idx as usize];
                             slot.header.sequence = self.sequence.fetch_add(1, Ordering::Relaxed);
                             slot.header.refcount = initial_refcount;
-                            slot.header.state.store(SlotState::Writing as u32, Ordering::Release);
+                            slot.header
+                                .state
+                                .store(SlotState::Writing as u32, Ordering::Release);
                         }
 
                         return Ok(slot_idx);
@@ -363,7 +371,9 @@ impl WALArena {
             slot.header.payload_len = 0;
             slot.header.sequence = 0;
             slot.header.refcount = 0;
-            slot.header.state.store(SlotState::Free as u32, Ordering::Release);
+            slot.header
+                .state
+                .store(SlotState::Free as u32, Ordering::Release);
         }
 
         // Mark as free in bitmap.
@@ -403,7 +413,9 @@ impl WALArena {
             slot.header.payload_len = payload.len() as u32;
             slot.payload[..payload.len()].copy_from_slice(payload);
 
-            slot.header.state.store(SlotState::Committed as u32, Ordering::Release);
+            slot.header
+                .state
+                .store(SlotState::Committed as u32, Ordering::Release);
         }
 
         Ok(())
@@ -477,7 +489,9 @@ impl WALArena {
 
         unsafe {
             let slot = &mut (*self.slots.get())[slot_idx as usize];
-            slot.header.state.store(SlotState::Persisted as u32, Ordering::Release);
+            slot.header
+                .state
+                .store(SlotState::Persisted as u32, Ordering::Release);
         }
 
         Ok(())
@@ -518,7 +532,9 @@ impl WALArena {
 
         unsafe {
             let slot = &mut (*self.slots.get())[slot_idx as usize];
-            slot.header.state.store(SlotState::Persisted as u32, Ordering::Release);
+            slot.header
+                .state
+                .store(SlotState::Persisted as u32, Ordering::Release);
         }
 
         self.decrement_refcount(slot_idx)
@@ -583,7 +599,10 @@ mod tests {
     #[test]
     fn test_arena_slot_empty() {
         let slot = ArenaSlot::empty();
-        assert_eq!(slot.header.state.load(Ordering::Relaxed), SlotState::Free as u32);
+        assert_eq!(
+            slot.header.state.load(Ordering::Relaxed),
+            SlotState::Free as u32
+        );
         assert_eq!(slot.payload, [0u8; PAYLOAD_CAPACITY]);
     }
 

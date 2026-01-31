@@ -353,8 +353,7 @@ fn test_chaos_pipeline_hard_crash_simulation() {
 
     println!(
         "Crash recovery: checkpoint used: {}, {} entries from WAL",
-        checkpoint_used,
-        result.entries_recovered
+        checkpoint_used, result.entries_recovered
     );
 
     assert!(!checkpoint_used);
@@ -369,10 +368,14 @@ fn test_chaos_pipeline_hard_crash_simulation() {
     for (fact_id, payload) in &facts[..crash_point as usize] {
         expected_kernel.admit(fact_id, &[], payload).unwrap();
     }
-    let expected_hash = Checkpoint::compute_tiered_hash(expected_kernel.state(), &expected_kernel.frontier);
+    let expected_hash =
+        Checkpoint::compute_tiered_hash(expected_kernel.state(), &expected_kernel.frontier);
 
     let recovered_hash = bootstrap.compute_tiered_hash();
-    assert_eq!(expected_hash, recovered_hash, "Crash recovery state mismatch");
+    assert_eq!(
+        expected_hash, recovered_hash,
+        "Crash recovery state mismatch"
+    );
 
     let _ = fs::remove_file(&wal_path);
     let _ = fs::remove_file(&checkpoint_path);
@@ -455,7 +458,10 @@ fn test_chaos_pipeline_100k_stress() {
     assert_eq!(result.entries_recovered, fact_count);
 
     let recovered_hash = bootstrap.compute_tiered_hash();
-    assert_eq!(pre_crash_hash, recovered_hash, "100k stress test state mismatch");
+    assert_eq!(
+        pre_crash_hash, recovered_hash,
+        "100k stress test state mismatch"
+    );
 
     let _ = fs::remove_file(&wal_path);
     let _ = fs::remove_file(&checkpoint_path);

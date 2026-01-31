@@ -1,8 +1,8 @@
 //! TwoLaneKernel: BFVC + ExactCausalIndex for precise dependency tracking.
 
-use ctfs::core::kernel::{TwoLaneKernel, AdmitError};
-use ctfs::core::StateCell;
+use ctfs::core::kernel::{AdmitError, TwoLaneKernel};
 use ctfs::core::topology::FactId;
+use ctfs::core::StateCell;
 use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 

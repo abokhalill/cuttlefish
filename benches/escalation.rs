@@ -164,15 +164,11 @@ fn bench_conflict_resolution(c: &mut Criterion) {
     let fact_b: FactId = [0x22; 32];
 
     c.bench_function("conflict_resolution", |b| {
-        b.iter(|| {
-            black_box(resolve_conflict(black_box(&fact_a), black_box(&fact_b)))
-        })
+        b.iter(|| black_box(resolve_conflict(black_box(&fact_a), black_box(&fact_b))))
     });
 
     c.bench_function("wins_conflict", |b| {
-        b.iter(|| {
-            black_box(wins_conflict(black_box(&fact_a), black_box(&fact_b)))
-        })
+        b.iter(|| black_box(wins_conflict(black_box(&fact_a), black_box(&fact_b))))
     });
 }
 

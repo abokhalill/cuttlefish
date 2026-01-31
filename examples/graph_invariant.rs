@@ -1,9 +1,9 @@
 //! Graph invariant: grow-only graph with degree constraints.
 
-use ctfs::core::{Kernel, StateCell, AdmitError};
 use ctfs::core::topology::FactId;
-use ctfs::invariants::graph::{GraphState, GGraphInvariant, EdgePayload};
-use zerocopy::{IntoBytes, FromBytes};
+use ctfs::core::{AdmitError, Kernel, StateCell};
+use ctfs::invariants::graph::{EdgePayload, GGraphInvariant, GraphState};
+use zerocopy::{FromBytes, IntoBytes};
 
 fn main() {
     // 1. Initialize graph: 8 vertices, max out-degree=3, undirected
@@ -23,7 +23,9 @@ fn main() {
         fact_id[0] = i as u8;
 
         let payload = EdgePayload::new(*from, *to);
-        kernel.admit_raw(&fact_id, &[], payload.as_bytes()).expect("add edge");
+        kernel
+            .admit_raw(&fact_id, &[], payload.as_bytes())
+            .expect("add edge");
         println!("Added edge {} -> {}", from, to);
     }
 
@@ -38,7 +40,9 @@ fn main() {
     let fact_b: FactId = [101u8; 32];
     let fact_c: FactId = [102u8; 32];
 
-    kernel.admit_raw(&fact_a, &[], EdgePayload::new(0, 5).as_bytes()).expect("0->5");
+    kernel
+        .admit_raw(&fact_a, &[], EdgePayload::new(0, 5).as_bytes())
+        .expect("0->5");
     println!("Added edge 0 -> 5 (out-degree now 3)");
 
     // This should fail: would exceed max out-degree
@@ -49,7 +53,8 @@ fn main() {
 
     // 5. Idempotent: adding same edge again succeeds (no-op)
     let fact_dup: FactId = [200u8; 32];
-    kernel.admit_raw(&fact_dup, &[], EdgePayload::new(0, 1).as_bytes())
+    kernel
+        .admit_raw(&fact_dup, &[], EdgePayload::new(0, 1).as_bytes())
         .expect("duplicate edge is idempotent");
     println!("Duplicate edge 0 -> 1 accepted (idempotent)");
 

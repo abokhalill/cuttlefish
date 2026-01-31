@@ -1,8 +1,8 @@
 //! Custom invariant: implement your own algebraic constraint.
 
-use ctfs::core::{Invariant, InvariantError, Kernel, StateCell, AdmitError};
 use ctfs::core::topology::FactId;
-use zerocopy::{FromBytes, IntoBytes, KnownLayout, Immutable};
+use ctfs::core::{AdmitError, Invariant, InvariantError, Kernel, StateCell};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// State: tracks a value that can only increase (monotonic).
 #[derive(Debug, Clone, Copy, FromBytes, IntoBytes, KnownLayout, Immutable)]
@@ -14,7 +14,10 @@ struct MonotonicCounter {
 
 impl MonotonicCounter {
     fn new(initial: u64) -> Self {
-        Self { value: initial, _pad: [0u8; 56] }
+        Self {
+            value: initial,
+            _pad: [0u8; 56],
+        }
     }
 }
 
@@ -52,12 +55,16 @@ fn main() {
     // 2. Increase works
     let fact1: FactId = [1u8; 32];
     let payload1 = 150u64.to_le_bytes();
-    kernel.admit_raw(&fact1, &[], &payload1).expect("increase to 150");
+    kernel
+        .admit_raw(&fact1, &[], &payload1)
+        .expect("increase to 150");
 
     // 3. Same value works (idempotent)
     let fact2: FactId = [2u8; 32];
     let payload2 = 150u64.to_le_bytes();
-    kernel.admit_raw(&fact2, &[fact1], &payload2).expect("stay at 150");
+    kernel
+        .admit_raw(&fact2, &[fact1], &payload2)
+        .expect("stay at 150");
 
     // 4. Decrease is rejected
     let fact3: FactId = [3u8; 32];

@@ -3,8 +3,7 @@
 use crate::core::invariant::{Invariant, InvariantError};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(C)]
 pub struct MaxState {
     pub value: u64,
@@ -49,13 +48,12 @@ impl Invariant for MaxInvariant {
         }
 
         let proposed = u64::from_le_bytes([
-            payload[0], payload[1], payload[2], payload[3],
-            payload[4], payload[5], payload[6], payload[7],
+            payload[0], payload[1], payload[2], payload[3], payload[4], payload[5], payload[6],
+            payload[7],
         ]);
 
         let current = u64::from_le_bytes([
-            state[0], state[1], state[2], state[3],
-            state[4], state[5], state[6], state[7],
+            state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7],
         ]);
 
         // Monotonic: only update if proposed > current
@@ -74,8 +72,7 @@ impl Invariant for MaxInvariant {
 ///
 /// This is a simplified version with a single counter.
 /// For distributed use, extend to per-node counters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(C)]
 pub struct GCounterState {
     pub count: u64,
@@ -128,13 +125,12 @@ impl Invariant for GCounterInvariant {
         }
 
         let delta = u64::from_le_bytes([
-            payload[0], payload[1], payload[2], payload[3],
-            payload[4], payload[5], payload[6], payload[7],
+            payload[0], payload[1], payload[2], payload[3], payload[4], payload[5], payload[6],
+            payload[7],
         ]);
 
         let current = u64::from_le_bytes([
-            state[0], state[1], state[2], state[3],
-            state[4], state[5], state[6], state[7],
+            state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7],
         ]);
 
         let new_count = current.saturating_add(delta);
@@ -144,8 +140,9 @@ impl Invariant for GCounterInvariant {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, FromBytes, IntoBytes, KnownLayout, Immutable,
+)]
 #[repr(C)]
 pub struct LWWState {
     pub value: [u8; 32],
@@ -170,8 +167,7 @@ impl LWWState {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(Debug, Clone, Copy, FromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(C)]
 pub struct LWWPayload {
     pub value: [u8; 32],
@@ -201,22 +197,32 @@ impl Invariant for LWWInvariant {
         let mut new_value = [0u8; 32];
         new_value.copy_from_slice(&payload[0..32]);
         let new_timestamp = u64::from_le_bytes([
-            payload[32], payload[33], payload[34], payload[35],
-            payload[36], payload[37], payload[38], payload[39],
+            payload[32],
+            payload[33],
+            payload[34],
+            payload[35],
+            payload[36],
+            payload[37],
+            payload[38],
+            payload[39],
         ]);
         let new_node_id = u64::from_le_bytes([
-            payload[40], payload[41], payload[42], payload[43],
-            payload[44], payload[45], payload[46], payload[47],
+            payload[40],
+            payload[41],
+            payload[42],
+            payload[43],
+            payload[44],
+            payload[45],
+            payload[46],
+            payload[47],
         ]);
 
         // Parse current state
         let current_timestamp = u64::from_le_bytes([
-            state[32], state[33], state[34], state[35],
-            state[36], state[37], state[38], state[39],
+            state[32], state[33], state[34], state[35], state[36], state[37], state[38], state[39],
         ]);
         let current_node_id = u64::from_le_bytes([
-            state[40], state[41], state[42], state[43],
-            state[44], state[45], state[46], state[47],
+            state[40], state[41], state[42], state[43], state[44], state[45], state[46], state[47],
         ]);
 
         // Lexicographic comparison: (timestamp, node_id)
@@ -234,8 +240,7 @@ impl Invariant for LWWInvariant {
 }
 
 /// State for bounded semilattice with capacity tracking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(C)]
 pub struct BoundedLatticeState {
     pub value: u64,
@@ -296,18 +301,16 @@ impl Invariant for BoundedGCounterInvariant {
         }
 
         let delta = u64::from_le_bytes([
-            payload[0], payload[1], payload[2], payload[3],
-            payload[4], payload[5], payload[6], payload[7],
+            payload[0], payload[1], payload[2], payload[3], payload[4], payload[5], payload[6],
+            payload[7],
         ]);
 
         let current = u64::from_le_bytes([
-            state[0], state[1], state[2], state[3],
-            state[4], state[5], state[6], state[7],
+            state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7],
         ]);
 
         let capacity = u64::from_le_bytes([
-            state[8], state[9], state[10], state[11],
-            state[12], state[13], state[14], state[15],
+            state[8], state[9], state[10], state[11], state[12], state[13], state[14], state[15],
         ]);
 
         let new_value = current.saturating_add(delta);

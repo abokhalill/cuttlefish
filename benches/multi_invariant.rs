@@ -80,7 +80,12 @@ fn bench_dual_kernel_admit_with_dep(c: &mut Criterion) {
     let genesis: FactId = [0u8; 32];
     let uniqueness_payload_genesis = make_uniqueness_payload(0);
     kernel
-        .admit(&genesis, &[], &conservation_payload, &uniqueness_payload_genesis)
+        .admit(
+            &genesis,
+            &[],
+            &conservation_payload,
+            &uniqueness_payload_genesis,
+        )
         .unwrap();
 
     c.bench_function("dual_kernel_admit_with_1_dep", |b| {
@@ -124,7 +129,12 @@ fn bench_multi_invariant_full_cycle(c: &mut Criterion) {
         let genesis: FactId = [0u8; 32];
         let uniqueness_payload_genesis = make_uniqueness_payload(0);
         kernel
-            .admit(&genesis, &[], &conservation_payload, &uniqueness_payload_genesis)
+            .admit(
+                &genesis,
+                &[],
+                &conservation_payload,
+                &uniqueness_payload_genesis,
+            )
             .unwrap();
 
         let mut counter = 1u64;
@@ -136,7 +146,12 @@ fn bench_multi_invariant_full_cycle(c: &mut Criterion) {
 
             let uniqueness_payload = make_uniqueness_payload((counter & 0x1FF) as u16);
 
-            let result = kernel.admit(&fact_id, &[prev_fact], &conservation_payload, &uniqueness_payload);
+            let result = kernel.admit(
+                &fact_id,
+                &[prev_fact],
+                &conservation_payload,
+                &uniqueness_payload,
+            );
 
             prev_fact = fact_id;
             counter = counter.wrapping_add(1);

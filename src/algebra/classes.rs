@@ -81,7 +81,8 @@ pub trait GroupInvariant: CommutativeInvariant {
 
 /// Join-semilattice. Always converges.
 pub trait LatticeInvariant: IdempotentInvariant {
-    fn join(&self, state_a: &[u8], state_b: &[u8], result: &mut [u8]) -> Result<(), InvariantError>;
+    fn join(&self, state_a: &[u8], state_b: &[u8], result: &mut [u8])
+        -> Result<(), InvariantError>;
     fn partial_order(&self, state_a: &[u8], state_b: &[u8]) -> bool;
 
     fn algebraic_class(&self) -> AlgebraicClass {

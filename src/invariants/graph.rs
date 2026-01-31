@@ -6,8 +6,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 pub const MAX_VERTICES: usize = 16;
 
 /// 16x16 adjacency matrix (256 bits) + metadata = 64 bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(C)]
 pub struct GraphState {
     pub adjacency: [u64; 4],
@@ -145,8 +144,7 @@ impl Default for GraphState {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[derive(FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(Debug, Clone, Copy, FromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(C)]
 pub struct EdgePayload {
     pub from: u8,
@@ -272,7 +270,6 @@ impl Invariant for GGraphInvariant {
         Ok(())
     }
 }
-
 
 /// ReachabilityInvariant: Maintains transitive closure for reachability queries.
 ///
@@ -453,8 +450,8 @@ mod tests {
 
         // Initialize: 4 vertices, max out-degree = 1
         let mut state = [0u8; 64];
-        state[32] = 4;  // vertex_count
-        state[33] = 1;  // max_out_degree
+        state[32] = 4; // vertex_count
+        state[33] = 1; // max_out_degree
 
         // Add edge 0 -> 1 (ok)
         let payload1 = EdgePayload::new(0, 1);
@@ -472,14 +469,18 @@ mod tests {
         // Order 1: add (0,1) then (1,2)
         let mut state1 = [0u8; 64];
         state1[32] = 4;
-        inv.apply(EdgePayload::new(0, 1).as_bytes(), &mut state1).unwrap();
-        inv.apply(EdgePayload::new(1, 2).as_bytes(), &mut state1).unwrap();
+        inv.apply(EdgePayload::new(0, 1).as_bytes(), &mut state1)
+            .unwrap();
+        inv.apply(EdgePayload::new(1, 2).as_bytes(), &mut state1)
+            .unwrap();
 
         // Order 2: add (1,2) then (0,1)
         let mut state2 = [0u8; 64];
         state2[32] = 4;
-        inv.apply(EdgePayload::new(1, 2).as_bytes(), &mut state2).unwrap();
-        inv.apply(EdgePayload::new(0, 1).as_bytes(), &mut state2).unwrap();
+        inv.apply(EdgePayload::new(1, 2).as_bytes(), &mut state2)
+            .unwrap();
+        inv.apply(EdgePayload::new(0, 1).as_bytes(), &mut state2)
+            .unwrap();
 
         // Same result
         assert_eq!(state1[0..32], state2[0..32]);

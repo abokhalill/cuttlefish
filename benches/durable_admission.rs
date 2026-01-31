@@ -30,12 +30,8 @@ fn bench_durable_admission(c: &mut Criterion) {
     let (producer, _consumer) = buffer.split();
     let frontier = PersistenceFrontier::new();
 
-    let mut kernel = DurableKernel::with_state(
-        TotalSupplyInvariant::new(),
-        state,
-        producer,
-        &frontier,
-    );
+    let mut kernel =
+        DurableKernel::with_state(TotalSupplyInvariant::new(), state, producer, &frontier);
 
     let payload = make_payload(1);
 
@@ -104,11 +100,7 @@ fn bench_invariant_only(c: &mut Criterion) {
             fact_id[..8].copy_from_slice(&counter.to_le_bytes());
             counter = counter.wrapping_add(1);
 
-            black_box(kernel.admit_raw(
-                black_box(&fact_id),
-                black_box(&[]),
-                black_box(&payload),
-            ))
+            black_box(kernel.admit_raw(black_box(&fact_id), black_box(&[]), black_box(&payload)))
         })
     });
 }

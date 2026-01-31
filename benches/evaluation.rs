@@ -1,8 +1,6 @@
 //! Evaluation benchmarks. Latency, throughput, convergence.
 
-use criterion::{
-    black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::time::{Duration, Instant};
 
 use cuttlefish::core::checkpoint::Checkpoint;
@@ -186,8 +184,7 @@ fn bench_dependency_overhead(c: &mut Criterion) {
             &dep_count,
             |b, &deps| {
                 let state = make_conservation_state(0, i128::MIN, i128::MAX);
-                let mut kernel =
-                    TwoLaneKernel::with_state(TotalSupplyInvariant::new(), state);
+                let mut kernel = TwoLaneKernel::with_state(TotalSupplyInvariant::new(), state);
                 let payload = make_payload(1);
 
                 let mut dep_ids: Vec<FactId> = Vec::new();
@@ -344,14 +341,28 @@ fn bench_memory_footprint(c: &mut Criterion) {
             let causal_clock_size = std::mem::size_of::<CausalClock>();
             let kernel_size = std::mem::size_of::<TwoLaneKernel<TotalSupplyInvariant>>();
 
-            black_box((state_cell_size, exact_index_size, causal_clock_size, kernel_size))
+            black_box((
+                state_cell_size,
+                exact_index_size,
+                causal_clock_size,
+                kernel_size,
+            ))
         })
     });
 
     println!("\n=== Memory Footprint ===");
-    println!("StateCell:        {} bytes", std::mem::size_of::<StateCell>());
-    println!("ExactCausalIndex: {} bytes", std::mem::size_of::<ExactCausalIndex>());
-    println!("CausalClock:      {} bytes", std::mem::size_of::<CausalClock>());
+    println!(
+        "StateCell:        {} bytes",
+        std::mem::size_of::<StateCell>()
+    );
+    println!(
+        "ExactCausalIndex: {} bytes",
+        std::mem::size_of::<ExactCausalIndex>()
+    );
+    println!(
+        "CausalClock:      {} bytes",
+        std::mem::size_of::<CausalClock>()
+    );
     println!(
         "TwoLaneKernel:    {} bytes",
         std::mem::size_of::<TwoLaneKernel<TotalSupplyInvariant>>()

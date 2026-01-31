@@ -1,8 +1,8 @@
 //! EscalatingKernel: auto-switches from Bloom to precise mode at 40% saturation.
 
-use ctfs::core::kernel::{EscalatingKernel, CausalMode};
-use ctfs::core::StateCell;
+use ctfs::core::kernel::{CausalMode, EscalatingKernel};
 use ctfs::core::topology::FactId;
+use ctfs::core::StateCell;
 use ctfs::invariants::monotonic::{GCounterInvariant, GCounterState};
 use zerocopy::IntoBytes;
 
@@ -27,8 +27,12 @@ fn main() {
         // Check saturation periodically
         if i % 50 == 49 {
             let sat = kernel.saturation();
-            println!("After {} facts: saturation={:.1}%, mode={:?}",
-                     i + 1, sat * 100.0, kernel.current_mode());
+            println!(
+                "After {} facts: saturation={:.1}%, mode={:?}",
+                i + 1,
+                sat * 100.0,
+                kernel.current_mode()
+            );
         }
     }
 
