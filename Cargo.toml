@@ -1,6 +1,6 @@
 [package]
 name = "ctfs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Causal consistency at nanosecond latency. Algebraic invariants without coordination."
 license = "MIT"
