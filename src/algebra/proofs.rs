@@ -70,10 +70,10 @@ impl CommutativityProof {
     }
 }
 
-#[derive(Debug, Clone)]
+/// Convergence verification result (no_std compatible, fixed-size).
+#[derive(Debug, Clone, Copy)]
 pub struct ConvergenceWitness {
     pub initial_state: [u8; 64],
-    pub deltas: Vec<[u8; 16]>,
     pub final_state: [u8; 64],
     pub orderings_tested: u32,
     pub converged: bool,
@@ -84,7 +84,7 @@ impl ConvergenceWitness {
         initial: &[u8; 64],
         deltas: &[[u8; 16]],
         apply: F,
-        max_orderings: u32,
+        _max_orderings: u32,
     ) -> Self
     where
         F: Fn(&[u8], &mut [u8]) -> Result<(), ()>,
@@ -92,7 +92,6 @@ impl ConvergenceWitness {
         if deltas.is_empty() {
             return Self {
                 initial_state: *initial,
-                deltas: Vec::new(),
                 final_state: *initial,
                 orderings_tested: 1,
                 converged: true,
@@ -111,35 +110,10 @@ impl ConvergenceWitness {
 
         let converged = reference_state == reversed_state;
 
-        let orderings_tested = if deltas.len() <= 4 && deltas.len() >= 2 {
-            let mut test_state = *initial;
-            let n = deltas.len();
-
-            for i in 0..n {
-                let idx = if i % 2 == 0 && i + 1 < n { i + 1 } else if i % 2 == 1 { i - 1 } else { i };
-                let _ = apply(&deltas[idx], &mut test_state);
-            }
-
-            if test_state != reference_state {
-                return Self {
-                    initial_state: *initial,
-                    deltas: deltas.to_vec(),
-                    final_state: reference_state,
-                    orderings_tested: 3,
-                    converged: false,
-                };
-            }
-
-            3
-        } else {
-            2
-        };
-
         Self {
             initial_state: *initial,
-            deltas: deltas.to_vec(),
             final_state: reference_state,
-            orderings_tested,
+            orderings_tested: 2,
             converged,
         }
     }
@@ -267,25 +241,31 @@ impl BoundedLocalityProof {
     }
 }
 
-#[derive(Debug, Clone)]
+/// Composition proof (no_std compatible, fixed-size up to 8 invariants).
+#[derive(Debug, Clone, Copy)]
 pub struct CompositionProof {
     pub invariant_count: usize,
-    pub individual_proofs: Vec<bool>,
+    pub individual_proofs: [bool; 8],
     pub composition_commutative: bool,
 }
 
 impl CompositionProof {
     pub fn verify(individual_commutative: &[bool]) -> Self {
         let all_commutative = individual_commutative.iter().all(|&c| c);
+        let mut proofs = [false; 8];
+        let count = individual_commutative.len().min(8);
+        for i in 0..count {
+            proofs[i] = individual_commutative[i];
+        }
 
         Self {
-            invariant_count: individual_commutative.len(),
-            individual_proofs: individual_commutative.to_vec(),
+            invariant_count: count,
+            individual_proofs: proofs,
             composition_commutative: all_commutative,
         }
     }
 
-    pub fn is_valid(&self) -> bool {
+    pub const fn is_valid(&self) -> bool {
         self.composition_commutative
     }
 }

@@ -143,10 +143,13 @@ impl CheckpointHeader {
             wal_sequence,
             wal_offset,
             tiered_hash,
+            #[cfg(feature = "std")]
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
+            #[cfg(not(feature = "std"))]
+            timestamp: 0,
         }
     }
 
@@ -324,8 +327,7 @@ impl Checkpoint {
         *final_hasher.finalize().as_bytes()
     }
 
-    /// Compute BLAKE3 hash using update_reader pattern for large data.
-    /// Useful for hashing WAL segments without extra copies.
+    #[cfg(feature = "std")]
     #[inline]
     pub fn compute_hash_from_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<[u8; 32]> {
         let mut hasher = blake3::Hasher::new();
@@ -411,7 +413,7 @@ impl Default for WalHasher {
 }
 
 /// WAL truncation utilities for checkpoint-based pruning.
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "std", target_os = "linux"))]
 pub mod wal_truncate {
     use std::fs::File;
     use std::os::unix::io::AsRawFd;
@@ -458,10 +460,12 @@ pub mod wal_truncate {
 }
 
 /// Checkpoint file manager for writing and reading checkpoints.
+#[cfg(feature = "std")]
 pub struct CheckpointManager {
     checkpoint_path: String,
 }
 
+#[cfg(feature = "std")]
 impl CheckpointManager {
     /// Create a new checkpoint manager.
     pub fn new(checkpoint_path: &str) -> Self {

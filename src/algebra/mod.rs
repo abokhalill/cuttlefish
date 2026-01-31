@@ -4,6 +4,8 @@ pub mod classes;
 pub mod lattice;
 pub mod proofs;
 pub mod composition;
+
+#[cfg(feature = "std")]
 pub mod causal_consistency;
 
 pub use classes::{
@@ -13,6 +15,8 @@ pub use classes::{
 pub use lattice::{JoinSemilattice, MeetSemilattice, BoundedLattice, LatticeMerge};
 pub use composition::{ComposedInvariant, ParallelComposition};
 pub use proofs::{ConvergenceWitness, CommutativityProof, CoordinationClass};
+
+#[cfg(feature = "std")]
 pub use causal_consistency::{
     CausallyConsistentInvariant, AccProofWitness, CausalFact, 
     CausalOrderValidator, verify_acc_theorem,
