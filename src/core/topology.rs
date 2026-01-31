@@ -239,9 +239,7 @@ impl PreciseClock {
     pub fn import_from_slice(&mut self, facts: &[FactId]) {
         self.count = 0;
         let limit = facts.len().min(PRECISE_CLOCK_CAPACITY);
-        for i in 0..limit {
-            self.ancestors[i] = facts[i];
-        }
+        self.ancestors[..limit].copy_from_slice(&facts[..limit]);
         self.count = limit as u8;
     }
 }
@@ -497,6 +495,7 @@ impl ExactCausalIndex {
     }
 
     #[inline]
+    #[allow(dead_code)]
     fn contains_scalar_from(&self, fact_id: &FactId, start_idx: usize, start_psl: u8) -> bool {
         let mut idx = start_idx;
         let mut psl = start_psl;
@@ -594,10 +593,8 @@ impl ExactCausalIndex {
         self.count = 0;
 
         let skip = entry_count.saturating_sub(keep_count);
-        for i in skip..entry_count {
-            if let Some(fact_id) = entries[i] {
-                self.insert(&fact_id);
-            }
+        for fact_id in entries.iter().take(entry_count).skip(skip).flatten() {
+            self.insert(fact_id);
         }
 
         self.oldest_sequence = self.oldest_sequence.saturating_add(skip as u64);

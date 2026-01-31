@@ -5,18 +5,13 @@ use super::topology::{CausalClock, FactId};
 
 pub const DEFAULT_HORIZON_DEPTH: u64 = 1000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum PruningPolicy {
     NeverPrune = 0,
+    #[default]
     DepthBased = 1,
     EpochBased = 2,
-}
-
-impl Default for PruningPolicy {
-    fn default() -> Self {
-        Self::DepthBased
-    }
 }
 
 #[derive(Debug, Clone, Copy)]

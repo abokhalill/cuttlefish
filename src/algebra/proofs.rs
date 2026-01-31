@@ -1,6 +1,6 @@
 //! Proof witnesses. Runtime-verifiable algebraic property verification.
 
-use super::classes::{AlgebraicClass, CoordinationScope};
+use super::classes::AlgebraicClass;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoordinationClass {
@@ -254,9 +254,7 @@ impl CompositionProof {
         let all_commutative = individual_commutative.iter().all(|&c| c);
         let mut proofs = [false; 8];
         let count = individual_commutative.len().min(8);
-        for i in 0..count {
-            proofs[i] = individual_commutative[i];
-        }
+        proofs[..count].copy_from_slice(&individual_commutative[..count]);
 
         Self {
             invariant_count: count,

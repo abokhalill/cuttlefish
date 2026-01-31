@@ -1,8 +1,6 @@
 //! Monotonic invariants. Lattice-based, always converge.
 
 use crate::core::invariant::{Invariant, InvariantError};
-use crate::algebra::classes::{AlgebraicClass, LatticeInvariant, MonotonicInvariant, MonotonicDirection};
-use crate::algebra::lattice::{JoinSemilattice, LatticeMerge, MaxU64, MaxU128};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

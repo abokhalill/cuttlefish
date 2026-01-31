@@ -1098,20 +1098,20 @@ impl MultiKernel {
         }
 
         let mut scratch: [[u8; STATE_CELL_SIZE]; MAX_INVARIANTS] = [[0u8; STATE_CELL_SIZE]; MAX_INVARIANTS];
-        for i in 0..self.invariant_count {
-            scratch[i].copy_from_slice(self.states[i].as_bytes());
+        for (i, s) in scratch.iter_mut().enumerate().take(self.invariant_count) {
+            s.copy_from_slice(self.states[i].as_bytes());
         }
 
-        for i in 0..self.invariant_count {
+        for (i, s) in scratch.iter_mut().enumerate().take(self.invariant_count) {
             if let Some(inv_fn) = self.invariants[i] {
-                if inv_fn(payloads[i], &mut scratch[i]).is_err() {
+                if inv_fn(payloads[i], s).is_err() {
                     return Err(AdmitError::InvariantViolation);
                 }
             }
         }
 
-        for i in 0..self.invariant_count {
-            self.states[i].as_bytes_mut().copy_from_slice(&scratch[i]);
+        for (i, s) in scratch.iter().enumerate().take(self.invariant_count) {
+            self.states[i].as_bytes_mut().copy_from_slice(s);
         }
 
         self.frontier.advance(*fact_id);
@@ -1278,12 +1278,7 @@ impl<I: Invariant + Clone> TenantKernel<I> {
 
     #[inline]
     fn find_tenant(&self, tenant_id: TenantId) -> Option<usize> {
-        for i in 0..self.tenant_count {
-            if self.domains[i].active && self.domains[i].tenant_id == tenant_id {
-                return Some(i);
-            }
-        }
-        None
+        (0..self.tenant_count).find(|&i| self.domains[i].active && self.domains[i].tenant_id == tenant_id)
     }
 
     #[inline]

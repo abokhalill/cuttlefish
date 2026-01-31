@@ -39,8 +39,8 @@ impl Attestation {
     /// TODO: Replace with ed25519.
     #[inline(always)]
     pub fn verify(&self, state_hash: &[u8; 32]) -> bool {
-        for i in 0..32 {
-            if self.signature[i] != (self.validator[i] ^ state_hash[i]) {
+        for (i, &byte) in state_hash.iter().enumerate() {
+            if self.signature[i] != (self.validator[i] ^ byte) {
                 return false;
             }
         }
@@ -91,10 +91,8 @@ impl ProofEnvelope {
     pub fn count_valid(&self, state_hash: &[u8; 32]) -> usize {
         let mut count = 0usize;
         for i in 0..MAX_ATTESTATIONS {
-            if (self.attestation_mask >> i) & 1 == 1 {
-                if self.attestations[i].verify(state_hash) {
-                    count += 1;
-                }
+            if (self.attestation_mask >> i) & 1 == 1 && self.attestations[i].verify(state_hash) {
+                count += 1;
             }
         }
         count
@@ -424,7 +422,7 @@ pub mod wal_truncate {
     /// # Safety
     /// The offset must be block-aligned (typically 4K) for best results.
     pub fn punch_hole(file: &File, offset: u64) -> std::io::Result<()> {
-        use std::io::{Error, ErrorKind};
+        use std::io::Error;
 
         if offset == 0 {
             return Ok(());
@@ -446,10 +444,7 @@ pub mod wal_truncate {
         if ret == 0 {
             Ok(())
         } else {
-            Err(Error::new(
-                ErrorKind::Other,
-                format!("fallocate failed: {}", std::io::Error::last_os_error()),
-            ))
+            Err(Error::other(format!("fallocate failed: {}", std::io::Error::last_os_error())))
         }
     }
 
@@ -545,8 +540,8 @@ impl CheckpointManager {
         let computed_hash = Checkpoint::compute_tiered_hash(&state, &frontier_state);
 
         let mut diff = 0u8;
-        for i in 0..32 {
-            diff |= computed_hash[i] ^ header.tiered_hash[i];
+        for (i, &byte) in computed_hash.iter().enumerate() {
+            diff |= byte ^ header.tiered_hash[i];
         }
         if diff != 0 {
             return Ok(None);

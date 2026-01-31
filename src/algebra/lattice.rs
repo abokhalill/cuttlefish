@@ -1,6 +1,5 @@
 //! Lattice primitives. Join = LUB, associative + commutative + idempotent = convergence.
 
-use crate::core::invariant::InvariantError;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub trait JoinSemilattice: Sized {
