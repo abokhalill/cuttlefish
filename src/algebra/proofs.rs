@@ -1,6 +1,6 @@
 //! Proof witnesses. Runtime-verifiable algebraic property verification.
 
-use super::classes::AlgebraicClass;
+use crate::core::invariant::AlgebraicClass;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoordinationClass {

@@ -3,7 +3,6 @@
 [![Crates.io](https://img.shields.io/crates/v/ctfs.svg)](https://crates.io/crates/ctfs)
 [![Documentation](https://docs.rs/ctfs/badge.svg)](https://docs.rs/ctfs)
 [![CI](https://github.com/abokhalill/cuttlefish/actions/workflows/ci.yml/badge.svg)](https://github.com/abokhalill/cuttlefish/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Causal consistency at nanosecond latency. Algebraic invariants without coordination.**
 

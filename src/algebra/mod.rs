@@ -8,8 +8,9 @@ pub mod proofs;
 #[cfg(feature = "std")]
 pub mod causal_consistency;
 
+pub use crate::core::invariant::AlgebraicClass;
 pub use classes::{
-    AlgebraicClass, BoundedInvariant, CommutativeInvariant, GroupInvariant, IdempotentInvariant,
+    BoundedInvariant, CommutativeInvariant, GroupInvariant, IdempotentInvariant,
     LatticeInvariant, MonotonicInvariant,
 };
 pub use composition::{ComposedInvariant, ParallelComposition};

@@ -1,6 +1,6 @@
 //! Invariant composition. Parallel composition preserves algebraic properties.
 
-use super::classes::AlgebraicClass;
+use crate::core::invariant::AlgebraicClass;
 use crate::core::invariant::{Invariant, InvariantError};
 
 pub const MAX_COMPOSED_INVARIANTS: usize = 8;

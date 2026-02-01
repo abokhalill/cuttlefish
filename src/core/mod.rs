@@ -17,7 +17,7 @@ pub use checkpoint::{Attestation, Checkpoint, CheckpointError, ProofEnvelope};
 pub use fact::{Fact, FactHeader};
 pub use frontier::{Frontier, FrontierState, MAX_FRONTIER_WIDTH};
 pub use horizon::{Horizon, PruningPolicy};
-pub use invariant::{Invariant, InvariantError};
+pub use invariant::{AlgebraicClass, Invariant, InvariantError};
 pub use kernel::{
     AdmitError, DurableStatus, Kernel, ReAnchorError, TenantDomain, TenantId, TenantKernel,
     MAX_TENANTS,

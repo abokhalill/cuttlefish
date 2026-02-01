@@ -1,31 +1,10 @@
 //! Algebraic classification. The hierarchy determines coordination scope.
 
-use crate::core::invariant::{Invariant, InvariantError};
+use crate::core::invariant::{AlgebraicClass, Invariant, InvariantError};
 
-/// Coordination requirements derived from algebraic properties.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum AlgebraicClass {
-    Commutative = 0,
-    CommutativeIdempotent = 1,
-    Lattice = 2,
-    Group = 3,
-    BoundedCommutative = 4,
-    Ordered = 5,
-}
+pub use crate::core::invariant::AlgebraicClass as Class;
 
 impl AlgebraicClass {
-    #[inline(always)]
-    pub const fn is_coordination_free(&self) -> bool {
-        matches!(
-            self,
-            AlgebraicClass::Commutative
-                | AlgebraicClass::CommutativeIdempotent
-                | AlgebraicClass::Lattice
-                | AlgebraicClass::Group
-        )
-    }
-
     #[inline(always)]
     pub const fn guarantees_sec(&self) -> bool {
         !matches!(self, AlgebraicClass::Ordered)
