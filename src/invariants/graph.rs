@@ -1,6 +1,6 @@
 //! Graph invariants. Grow-only = lattice under edge union = coordination-free.
 
-use crate::core::invariant::{Invariant, InvariantError};
+use crate::core::invariant::{AlgebraicClass, Invariant, InvariantError};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_VERTICES: usize = 16;
@@ -268,6 +268,11 @@ impl Invariant for GGraphInvariant {
         }
 
         Ok(())
+    }
+
+    #[inline(always)]
+    fn algebraic_class(&self) -> Option<AlgebraicClass> {
+        Some(AlgebraicClass::Lattice)
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::core::invariant::{Invariant, InvariantError};
+use crate::core::invariant::{AlgebraicClass, Invariant, InvariantError};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const UNIQUENESS_BITS: usize = 512;
@@ -119,6 +119,11 @@ impl Invariant for UniquenessInvariant {
         state[word_offset..word_offset + 8].copy_from_slice(&new_bytes);
 
         Ok(())
+    }
+
+    #[inline(always)]
+    fn algebraic_class(&self) -> Option<AlgebraicClass> {
+        Some(AlgebraicClass::CommutativeIdempotent)
     }
 }
 

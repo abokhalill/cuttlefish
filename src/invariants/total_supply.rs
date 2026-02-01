@@ -1,4 +1,4 @@
-use crate::core::invariant::{Invariant, InvariantError};
+use crate::core::invariant::{AlgebraicClass, Invariant, InvariantError};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 #[derive(Debug, Clone, Copy, FromBytes, IntoBytes, KnownLayout, Immutable)]
@@ -106,6 +106,11 @@ impl Invariant for TotalSupplyInvariant {
         state[0..16].copy_from_slice(&new_bytes);
 
         Ok(())
+    }
+
+    #[inline(always)]
+    fn algebraic_class(&self) -> Option<AlgebraicClass> {
+        Some(AlgebraicClass::Group)
     }
 }
 

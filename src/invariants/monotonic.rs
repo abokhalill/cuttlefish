@@ -1,6 +1,6 @@
 //! Monotonic invariants. Lattice-based, always converge.
 
-use crate::core::invariant::{Invariant, InvariantError};
+use crate::core::invariant::{AlgebraicClass, Invariant, InvariantError};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromBytes, IntoBytes, KnownLayout, Immutable)]
@@ -61,6 +61,11 @@ impl Invariant for MaxInvariant {
         state[0..8].copy_from_slice(&new_value.to_le_bytes());
 
         Ok(())
+    }
+
+    #[inline(always)]
+    fn algebraic_class(&self) -> Option<AlgebraicClass> {
+        Some(AlgebraicClass::Lattice)
     }
 }
 
@@ -137,6 +142,11 @@ impl Invariant for GCounterInvariant {
         state[0..8].copy_from_slice(&new_count.to_le_bytes());
 
         Ok(())
+    }
+
+    #[inline(always)]
+    fn algebraic_class(&self) -> Option<AlgebraicClass> {
+        Some(AlgebraicClass::Commutative)
     }
 }
 
@@ -237,6 +247,11 @@ impl Invariant for LWWInvariant {
 
         Ok(())
     }
+
+    #[inline(always)]
+    fn algebraic_class(&self) -> Option<AlgebraicClass> {
+        Some(AlgebraicClass::Lattice)
+    }
 }
 
 /// State for bounded semilattice with capacity tracking.
@@ -322,6 +337,11 @@ impl Invariant for BoundedGCounterInvariant {
         state[0..8].copy_from_slice(&new_value.to_le_bytes());
 
         Ok(())
+    }
+
+    #[inline(always)]
+    fn algebraic_class(&self) -> Option<AlgebraicClass> {
+        Some(AlgebraicClass::BoundedCommutative)
     }
 }
 
@@ -445,5 +465,26 @@ mod tests {
         // Value should still be 90
         let count = u64::from_le_bytes(state[0..8].try_into().unwrap());
         assert_eq!(count, 90);
+    }
+
+    #[test]
+    fn test_algebraic_classes() {
+        use crate::core::invariant::Invariant;
+
+        let max = MaxInvariant::new();
+        assert_eq!(max.algebraic_class(), Some(AlgebraicClass::Lattice));
+        assert!(max.is_coordination_free());
+
+        let gcounter = GCounterInvariant::new();
+        assert_eq!(gcounter.algebraic_class(), Some(AlgebraicClass::Commutative));
+        assert!(gcounter.is_coordination_free());
+
+        let lww = LWWInvariant::new();
+        assert_eq!(lww.algebraic_class(), Some(AlgebraicClass::Lattice));
+        assert!(lww.is_coordination_free());
+
+        let bounded = BoundedGCounterInvariant::new();
+        assert_eq!(bounded.algebraic_class(), Some(AlgebraicClass::BoundedCommutative));
+        assert!(!bounded.is_coordination_free());
     }
 }
