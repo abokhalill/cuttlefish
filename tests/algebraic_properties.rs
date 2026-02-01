@@ -6,13 +6,13 @@
 //! - Associativity (for lattice operations)
 //! - Convergence
 
-use cuttlefish::algebra::lattice::{GSetLattice, JoinSemilattice, MaxU64, PNCounter};
-use cuttlefish::algebra::proofs::{CommutativityProof, ConvergenceWitness, IdempotenceProof};
-use cuttlefish::core::invariant::Invariant;
-use cuttlefish::invariants::graph::GGraphInvariant;
-use cuttlefish::invariants::monotonic::{GCounterInvariant, LWWInvariant, MaxInvariant};
-use cuttlefish::invariants::total_supply::TotalSupplyInvariant;
-use cuttlefish::invariants::uniqueness::UniquenessInvariant;
+use ctfs::algebra::lattice::{GSetLattice, JoinSemilattice, MaxU64, PNCounter};
+use ctfs::algebra::proofs::{CommutativityProof, ConvergenceWitness, IdempotenceProof};
+use ctfs::core::invariant::Invariant;
+use ctfs::invariants::graph::GGraphInvariant;
+use ctfs::invariants::monotonic::{GCounterInvariant, LWWInvariant, MaxInvariant};
+use ctfs::invariants::total_supply::TotalSupplyInvariant;
+use ctfs::invariants::uniqueness::UniquenessInvariant;
 
 // ============================================================================
 // Commutativity Tests
@@ -403,7 +403,7 @@ fn test_max_convergence() {
 
 #[test]
 fn test_composition_preserves_commutativity() {
-    use cuttlefish::algebra::composition::ComposedInvariant;
+    use ctfs::algebra::composition::ComposedInvariant;
 
     let composed = ComposedInvariant::new(TotalSupplyInvariant::new(), GCounterInvariant::new());
 

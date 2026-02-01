@@ -2,9 +2,9 @@
 
 #[cfg(feature = "persistence")]
 mod checkpoint_tests {
-    use cuttlefish::core::checkpoint::{Checkpoint, CheckpointHeader, CheckpointManager};
-    use cuttlefish::core::frontier::FrontierState;
-    use cuttlefish::core::state::StateCell;
+    use ctfs::core::checkpoint::{Checkpoint, CheckpointHeader, CheckpointManager};
+    use ctfs::core::frontier::FrontierState;
+    use ctfs::core::state::StateCell;
     use std::fs;
     use zerocopy::IntoBytes;
 

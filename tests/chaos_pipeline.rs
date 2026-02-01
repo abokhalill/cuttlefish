@@ -15,13 +15,13 @@
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 
-use cuttlefish::core::checkpoint::{Checkpoint, CheckpointHeader, CheckpointManager};
-use cuttlefish::core::frontier::FrontierState;
-use cuttlefish::core::kernel::TwoLaneKernel;
-use cuttlefish::core::persistence::recovery::{BootstrapEngine, WalEntryHeader};
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::FactId;
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::core::checkpoint::{Checkpoint, CheckpointHeader, CheckpointManager};
+use ctfs::core::frontier::FrontierState;
+use ctfs::core::kernel::TwoLaneKernel;
+use ctfs::core::persistence::recovery::{BootstrapEngine, WalEntryHeader};
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::FactId;
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn make_conservation_state(balance: i128, min: i128, max: i128) -> StateCell {

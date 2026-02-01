@@ -3,11 +3,11 @@
 //! These tests prove that the Two-Lane architecture correctly rejects
 //! facts with false-positive dependencies (BFVC says yes, ExactIndex says no).
 
-use cuttlefish::core::frontier::build_deps_clock;
-use cuttlefish::core::kernel::{AdmitError, TwoLaneKernel};
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::{CausalClock, ExactCausalIndex, FactId};
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::core::frontier::build_deps_clock;
+use ctfs::core::kernel::{AdmitError, TwoLaneKernel};
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::{CausalClock, ExactCausalIndex, FactId};
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn make_conservation_state(balance: i128, min: i128, max: i128) -> StateCell {

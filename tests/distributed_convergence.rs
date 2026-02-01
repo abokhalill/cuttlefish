@@ -18,12 +18,12 @@
 
 use std::collections::HashMap;
 
-use cuttlefish::algebra::causal_consistency::{CausalFact, CausalOrderValidator};
-use cuttlefish::core::checkpoint::Checkpoint;
-use cuttlefish::core::kernel::TwoLaneKernel;
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::FactId;
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::algebra::causal_consistency::{CausalFact, CausalOrderValidator};
+use ctfs::core::checkpoint::Checkpoint;
+use ctfs::core::kernel::TwoLaneKernel;
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::FactId;
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 /// Simple LCG for deterministic "random" numbers.
