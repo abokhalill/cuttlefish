@@ -367,8 +367,17 @@ mod two_lane_durable {
 
         #[inline]
         pub fn spin_wait(&self) {
+            self.spin_wait_with_backoff(16)
+        }
+
+        #[inline]
+        pub fn spin_wait_with_backoff(&self, max_spins: u32) {
+            let mut spins = 1u32;
             while !self.is_durable() {
-                core::hint::spin_loop();
+                for _ in 0..spins {
+                    core::hint::spin_loop();
+                }
+                spins = spins.saturating_mul(2).min(max_spins);
             }
         }
 
