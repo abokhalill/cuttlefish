@@ -35,6 +35,8 @@ pub enum AdmitError {
     ArenaFull = 7,
     /// Payload exceeds slot size.
     PayloadTooLarge = 8,
+    /// Invariant requires coordination but replicated mode requested.
+    RequiresCoordination = 9,
 }
 
 /// When do you want your ACK?
@@ -160,6 +162,27 @@ impl<I: Invariant> Kernel<I> {
         self.frontier.advance(*fact_id);
 
         Ok(())
+    }
+
+    #[inline]
+    pub fn admit_replicated(&mut self, fact: &Fact<'_>) -> Result<(), AdmitError> {
+        if !self.invariant.is_coordination_free() {
+            return Err(AdmitError::RequiresCoordination);
+        }
+        self.admit(fact)
+    }
+
+    #[inline]
+    pub fn admit_replicated_raw(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        if !self.invariant.is_coordination_free() {
+            return Err(AdmitError::RequiresCoordination);
+        }
+        self.admit_raw(fact_id, deps, payload)
     }
 
     #[inline(always)]
@@ -298,6 +321,19 @@ impl<I: Invariant> TwoLaneKernel<I> {
         self.exact_index.observe(fact_id);
 
         Ok(())
+    }
+
+    #[inline]
+    pub fn admit_replicated(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+    ) -> Result<(), AdmitError> {
+        if !self.invariant.is_coordination_free() {
+            return Err(AdmitError::RequiresCoordination);
+        }
+        self.admit(fact_id, deps, payload)
     }
 
     #[inline(always)]
@@ -605,6 +641,33 @@ mod two_lane_durable {
             Ok(())
         }
 
+        #[inline]
+        pub fn admit_replicated(
+            &mut self,
+            fact_id: &FactId,
+            deps: &[FactId],
+            payload: &[u8],
+            ack_mode: AckMode,
+        ) -> Result<SlotIndex, AdmitError> {
+            if !self.invariant.is_coordination_free() {
+                return Err(AdmitError::RequiresCoordination);
+            }
+            self.admit(fact_id, deps, payload, ack_mode)
+        }
+
+        #[inline]
+        pub fn admit_replicated_async(
+            &mut self,
+            fact_id: &FactId,
+            deps: &[FactId],
+            payload: &[u8],
+        ) -> Result<DurableHandle<'a>, AdmitError> {
+            if !self.invariant.is_coordination_free() {
+                return Err(AdmitError::RequiresCoordination);
+            }
+            self.admit_async(fact_id, deps, payload)
+        }
+
         #[inline(always)]
         pub fn clock(&self) -> &CausalClock {
             &self.frontier.clock
@@ -724,6 +787,19 @@ mod durable {
             self.frontier.advance(*fact_id);
 
             Ok(())
+        }
+
+        #[inline]
+        pub fn admit_replicated(
+            &mut self,
+            fact_id: &FactId,
+            deps: &[FactId],
+            payload: &[u8],
+        ) -> Result<(), AdmitError> {
+            if !self.invariant.is_coordination_free() {
+                return Err(AdmitError::RequiresCoordination);
+            }
+            self.admit_durable(fact_id, deps, payload)
         }
 
         #[inline(always)]
