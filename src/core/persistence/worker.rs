@@ -1,13 +1,15 @@
 //! io_uring-based persistence worker for async fact durability.
 //!
-//! ## Zero-Copy Arena Integration
+//! ## Data Flow
 //!
-//! The worker reads directly from `WALArena` using `SlotIndex`:
-//! 1. Kernel acquires slot, writes payload, pushes `SlotIndex` to SPSC
-//! 2. Worker reads slot data via `arena.read_slot()`
-//! 3. Worker writes `WalEntryHeader` + payload to WAL file
-//! 4. On io_uring CQE, worker calls `arena.complete_persistence()`
-//! 5. When refcount hits 0, slot is auto-released
+//! 1. Kernel acquires arena slot, writes payload, pushes `SlotIndex` to SPSC
+//! 2. Worker reads slot data via `arena.read_slot()` (zero-copy reference)
+//! 3. Worker copies header + payload into 4K-aligned `SubmissionBuffer`
+//! 4. io_uring writes buffer to WAL file
+//! 5. On CQE completion, worker calls `arena.complete_persistence()`
+//!
+//! **Note**: Zero-copy applies to kernel→worker transfer only. The worker
+//! performs a memcpy into the submission buffer before disk I/O.
 
 use std::fs::{File, OpenOptions};
 use std::os::unix::io::AsRawFd;
