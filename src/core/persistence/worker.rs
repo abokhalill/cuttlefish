@@ -134,13 +134,29 @@ impl BufferPool {
     }
 }
 
+/// Pending write tracking for non-arena worker.
+#[derive(Clone, Copy)]
+struct PendingWrite {
+    entries: [PersistenceEntry; MAX_BATCH_SIZE],
+    entry_count: usize,
+}
+
+impl PendingWrite {
+    const fn empty() -> Self {
+        Self {
+            entries: [PersistenceEntry::empty(); MAX_BATCH_SIZE],
+            entry_count: 0,
+        }
+    }
+}
+
 /// io_uring persistence worker.
 pub struct PersistenceWorker {
     ring: IoUring,
     file: File,
     buffer_pool: BufferPool,
     write_offset: u64,
-    pending_writes: Vec<(usize, Vec<PersistenceEntry>)>,
+    pending_writes: [Option<PendingWrite>; BUFFER_POOL_SIZE],
 }
 
 impl PersistenceWorker {
@@ -159,7 +175,7 @@ impl PersistenceWorker {
             file,
             buffer_pool: BufferPool::new(BUFFER_POOL_SIZE),
             write_offset: 0,
-            pending_writes: Vec::with_capacity(BUFFER_POOL_SIZE),
+            pending_writes: [None; BUFFER_POOL_SIZE],
         })
     }
 
@@ -197,7 +213,7 @@ impl PersistenceWorker {
         let buffer = self.buffer_pool.get_mut(buf_idx);
         let mut offset = 0usize;
 
-        let mut written_entries = Vec::with_capacity(entries.len());
+        let mut pending = PendingWrite::empty();
 
         for entry in entries {
             let header_size = RecoveryWalEntryHeader::SIZE;
@@ -229,7 +245,8 @@ impl PersistenceWorker {
                 offset += data_slice.len();
             }
 
-            written_entries.push(*entry);
+            pending.entries[pending.entry_count] = *entry;
+            pending.entry_count += 1;
         }
 
         // Pad to block boundary
@@ -256,7 +273,7 @@ impl PersistenceWorker {
 
         self.ring.submit()?;
         self.write_offset += BLOCK_SIZE as u64;
-        self.pending_writes.push((buf_idx, written_entries));
+        self.pending_writes[buf_idx] = Some(pending);
 
         Ok(())
     }
@@ -264,7 +281,8 @@ impl PersistenceWorker {
     fn wait_completions(&mut self, frontier: &mut PersistenceFrontier) -> std::io::Result<()> {
         self.ring.submit_and_wait(1)?;
 
-        let mut completed_entries: Vec<PersistenceEntry> = Vec::new();
+        let mut completed_entries = [PersistenceEntry::empty(); MAX_BATCH_SIZE * 4];
+        let mut completed_count = 0usize;
 
         {
             let cq = self.ring.completion();
@@ -277,20 +295,20 @@ impl PersistenceWorker {
                     return Err(std::io::Error::from_raw_os_error(-result));
                 }
 
-                if let Some(pos) = self
-                    .pending_writes
-                    .iter()
-                    .position(|(idx, _)| *idx == buf_idx)
-                {
-                    let (_, entries) = self.pending_writes.remove(pos);
-                    completed_entries.extend(entries);
+                if let Some(pending) = self.pending_writes[buf_idx].take() {
+                    for i in 0..pending.entry_count {
+                        if completed_count < completed_entries.len() {
+                            completed_entries[completed_count] = pending.entries[i];
+                            completed_count += 1;
+                        }
+                    }
                 }
 
                 self.buffer_pool.release(buf_idx);
             }
         }
 
-        if !completed_entries.is_empty() {
+        if completed_count > 0 {
             let fsync_op = opcode::Fsync::new(types::Fd(self.file.as_raw_fd()))
                 .build()
                 .user_data(u64::MAX);
@@ -310,7 +328,7 @@ impl PersistenceWorker {
                 }
             }
 
-            frontier.advance(&completed_entries);
+            frontier.advance(&completed_entries[..completed_count]);
         }
 
         Ok(())
