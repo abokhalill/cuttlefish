@@ -1,5 +1,10 @@
 //! Causal horizon: the boundary beyond which facts are pruned.
 //! Facts referencing deps beyond horizon require re-anchoring.
+//!
+//! **Status**: Policy abstraction. The `ExactCausalIndex` performs implicit
+//! horizon enforcement via load-factor-triggered compaction. This module
+//! provides explicit policy control for applications that need configurable
+//! pruning behavior.
 
 use super::topology::{CausalClock, FactId};
 
