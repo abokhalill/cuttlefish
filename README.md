@@ -37,7 +37,7 @@ Distributed systems trade consistency for latency. Cuttlefish doesn't. It's a st
 
 ```toml
 [dependencies]
-ctfs = "1.0.0"
+ctfs = "1.0.2"
 zerocopy = "0.8"
 ```
 
@@ -46,17 +46,19 @@ use ctfs::prelude::*;
 use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
-// Initialize: balance=0, bounds=[MIN, MAX]
-let state = ConservationState::new(0, i128::MIN, i128::MAX);
-let mut cell = StateCell::new();
-cell.as_slice_mut().copy_from_slice(state.as_bytes());
+fn main() {
+    // Initialize: balance=0, bounds=[MIN, MAX]
+    let state = ConservationState::new(0, i128::MIN, i128::MAX);
+    let mut cell = StateCell::new();
+    cell.as_slice_mut().copy_from_slice(state.as_bytes());
 
-let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), cell);
+    let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), cell);
 
-// Admit a fact: +100 to balance
-let fact_id: FactId = [0u8; 32];
-let payload = 100i128.to_le_bytes();
-kernel.admit_raw(&fact_id, &[], &payload).unwrap();
+    // Admit a fact: +100 to balance
+    let fact_id: FactId = [0u8; 32];
+    let payload = 100i128.to_le_bytes();
+    kernel.admit_raw(&fact_id, &[], &payload).unwrap();
+}
 ```
 
 ---
@@ -110,37 +112,26 @@ cargo run --example graph_invariant   # Grow-only graph with constraints
 
 ```rust
 use ctfs::core::{Kernel, StateCell};
+use ctfs::core::topology::FactId;
 use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use zerocopy::IntoBytes;
 
-// Initialize state
-let state = ConservationState::new(1000, 0, 1_000_000);
-let mut cell = StateCell::new();
-cell.as_slice_mut().copy_from_slice(state.as_bytes());
+fn main() {
+    // Initialize state
+    let state = ConservationState::new(1000, 0, 1_000_000);
+    let mut cell = StateCell::new();
+    cell.as_slice_mut().copy_from_slice(state.as_bytes());
 
-let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), cell);
+    let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), cell);
 
-// Admit facts
-let fact1: FactId = [1u8; 32];
-kernel.admit_raw(&fact1, &[], &500i128.to_le_bytes()).unwrap();
+    // Admit facts
+    let fact1: FactId = [1u8; 32];
+    kernel.admit_raw(&fact1, &[], &500i128.to_le_bytes()).unwrap();
 
-// Admit with causal dependency
-let fact2: FactId = [2u8; 32];
-kernel.admit_raw(&fact2, &[fact1], &(-200i128).to_le_bytes()).unwrap();
-```
-
-### Multi-Tenant Isolation
-
-```rust
-use ctfs::core::TenantKernel;
-
-let mut kernel = TenantKernel::new(TotalSupplyInvariant::new());
-
-// Each tenant gets isolated causal state
-kernel.register_tenant(1, alice_state).unwrap();
-kernel.register_tenant(2, bob_state).unwrap();
-
-// Cross-tenant dependencies are rejected
-kernel.admit(1, &fact, &[bob_fact], &payload); // Error: CausalityViolation
+    // Admit with causal dependency
+    let fact2: FactId = [2u8; 32];
+    kernel.admit_raw(&fact2, &[fact1], &(-200i128).to_le_bytes()).unwrap();
+}
 ```
 
 ### Custom Invariant
@@ -277,13 +268,19 @@ Gossip-based replication via `NetworkingKernel`. Facts are broadcast to peers; c
 Bounded invariants (e.g., inventory limits) use escrow partitioning. Each node gets a quota slice. When a node exhausts its local quota, it broadcasts `QuotaRequest` to peers. Nodes with surplus respond with `QuotaGrant`. Exponential backoff (500ms → 4s) prevents thundering herd.
 
 ```rust
-use ctfs::algebra::escrow::{EscrowManager, PendingRequestMap};
+use ctfs::algebra::escrow::EscrowManager;
 
-let mut escrow = EscrowManager::new(1000); // Global limit
-escrow.initialize(&[node_a, node_b])?;     // Split 500/500
+fn main() -> Result<(), ctfs::algebra::escrow::EscrowError> {
+    let node_a = 1u64;
+    let node_b = 2u64;
 
-escrow.try_consume(node_a, 400)?;          // Local op, no coordination
-escrow.transfer(node_a, node_b, 50)?;      // Quota grant
+    let mut escrow = EscrowManager::new(1000); // Global limit
+    escrow.initialize(&[node_a, node_b])?;     // Split 500/500
+
+    escrow.try_consume(node_a, 400)?;          // Local op, no coordination
+    escrow.transfer(node_a, node_b, 50)?;      // Quota grant
+    Ok(())
+}
 ```
 
 ---
@@ -298,17 +295,20 @@ Feature-gated on `networking`. Exposes `GET /metrics` endpoint.
 use ctfs::core::{LatencyHistogram, MetricsServer};
 use std::sync::Arc;
 
-let admission_hist = Arc::new(LatencyHistogram::new());
-let persistence_hist = Arc::new(LatencyHistogram::new());
+fn main() -> std::io::Result<()> {
+    let admission_hist = Arc::new(LatencyHistogram::new());
+    let persistence_hist = Arc::new(LatencyHistogram::new());
 
-let server = MetricsServer::spawn(
-    "0.0.0.0:9090",
-    admission_hist.clone(),
-    Some(persistence_hist.clone()),
-)?;
+    let _server = MetricsServer::spawn(
+        "0.0.0.0:9090",
+        admission_hist.clone(),
+        Some(persistence_hist.clone()),
+    )?;
 
-// Instrumented admission records latency automatically
-kernel.admit_instrumented(&fact_id, &deps, &payload, &admission_hist)?;
+    // Record latency manually or use kernel.admit_instrumented()
+    admission_hist.record(286); // 286ns latency sample
+    Ok(())
+}
 ```
 
 **Exported metrics:**
@@ -322,11 +322,16 @@ kernel.admit_instrumented(&fact_id, &deps, &payload, &admission_hist)?;
 64 buckets, power-of-two scale. Cache-line aligned. Lock-free atomics. RDTSC timing on x86_64 (~6.6ns overhead per call).
 
 ```rust
-let hist = LatencyHistogram::new();
-hist.record(latency_nanos);
+use ctfs::core::LatencyHistogram;
 
-let (p50, p90, p99) = hist.percentiles();
-let buckets = hist.snapshot(); // [u64; 64]
+fn main() {
+    let hist = LatencyHistogram::new();
+    hist.record(286); // Record 286ns latency
+
+    let (p50, p90, p99) = hist.percentiles();
+    let buckets = hist.snapshot(); // [u64; 64]
+    println!("p50={}, p90={}, p99={}", p50, p90, p99);
+}
 ```
 
 ---
