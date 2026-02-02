@@ -559,6 +559,80 @@ impl CheckpointManager {
     pub fn exists(&self) -> bool {
         std::path::Path::new(&self.checkpoint_path).exists()
     }
+
+    /// Truncate WAL file after successful checkpoint.
+    ///
+    /// This removes all entries before the checkpoint's WAL offset,
+    /// reclaiming disk space. The truncation is atomic via rename.
+    ///
+    /// # Safety
+    /// Only call after checkpoint is durably written and verified.
+    pub fn truncate_wal(&self, wal_path: &str, checkpoint_offset: u64) -> std::io::Result<()> {
+        use std::io::{Read, Write};
+
+        let wal_file = std::fs::File::open(wal_path)?;
+        let file_len = wal_file.metadata()?.len();
+
+        if checkpoint_offset >= file_len {
+            // Nothing to truncate, or checkpoint is at/past end
+            return Ok(());
+        }
+
+        // Create temp file with remaining WAL data
+        let temp_path = format!("{}.compact", wal_path);
+        let mut temp_file = std::fs::File::create(&temp_path)?;
+
+        let mut reader = std::io::BufReader::new(wal_file);
+        use std::io::Seek;
+        reader.seek(std::io::SeekFrom::Start(checkpoint_offset))?;
+
+        let mut buffer = [0u8; 4096];
+        loop {
+            let bytes_read = reader.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+            temp_file.write_all(&buffer[..bytes_read])?;
+        }
+
+        temp_file.sync_all()?;
+        drop(temp_file);
+
+        // Atomic rename
+        std::fs::rename(&temp_path, wal_path)?;
+
+        Ok(())
+    }
+
+    /// Write checkpoint and truncate WAL atomically.
+    ///
+    /// 1. Write checkpoint to disk
+    /// 2. Verify checkpoint integrity
+    /// 3. Truncate WAL to remove pre-checkpoint entries
+    pub fn checkpoint_and_compact(
+        &self,
+        checkpoint: &Checkpoint,
+        wal_path: &str,
+    ) -> std::io::Result<()> {
+        // Write checkpoint
+        self.write_checkpoint(checkpoint)?;
+
+        // Verify it was written correctly
+        match self.read_checkpoint()? {
+            Some((header, _, _)) => {
+                // Truncate WAL from checkpoint offset
+                self.truncate_wal(wal_path, header.wal_offset)?;
+            }
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "checkpoint verification failed after write",
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -719,5 +793,51 @@ mod tests {
         let hash2 = hasher.finalize_reset();
 
         assert_eq!(hash1, hash2);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_wal_truncation() {
+        use std::io::Write;
+
+        let tmp_dir = std::env::temp_dir();
+        let wal_path = tmp_dir.join("ctfs_test_truncate.wal");
+        let ckpt_path = tmp_dir.join("ctfs_test_truncate.ckpt");
+
+        // Clean up
+        let _ = std::fs::remove_file(&wal_path);
+        let _ = std::fs::remove_file(&ckpt_path);
+
+        // Create a WAL with 3 blocks of data (simulating entries)
+        {
+            let mut file = std::fs::File::create(&wal_path).unwrap();
+            // Block 1: 4K of 0xAA
+            file.write_all(&[0xAA; 4096]).unwrap();
+            // Block 2: 4K of 0xBB
+            file.write_all(&[0xBB; 4096]).unwrap();
+            // Block 3: 4K of 0xCC
+            file.write_all(&[0xCC; 4096]).unwrap();
+            file.sync_all().unwrap();
+        }
+
+        // Verify initial size
+        let initial_len = std::fs::metadata(&wal_path).unwrap().len();
+        assert_eq!(initial_len, 12288); // 3 * 4K
+
+        // Truncate from offset 4096 (remove first block)
+        let mgr = CheckpointManager::new(ckpt_path.to_str().unwrap());
+        mgr.truncate_wal(wal_path.to_str().unwrap(), 4096).unwrap();
+
+        // Verify new size
+        let new_len = std::fs::metadata(&wal_path).unwrap().len();
+        assert_eq!(new_len, 8192); // 2 * 4K
+
+        // Verify content starts with 0xBB (second block is now first)
+        let content = std::fs::read(&wal_path).unwrap();
+        assert_eq!(content[0], 0xBB);
+        assert_eq!(content[4096], 0xCC);
+
+        // Clean up
+        let _ = std::fs::remove_file(&wal_path);
     }
 }
