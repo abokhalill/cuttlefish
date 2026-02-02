@@ -15,8 +15,19 @@ use std::fs::{File, OpenOptions};
 use std::os::unix::io::AsRawFd;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use io_uring::{opcode, types, IoUring};
+
+use crate::core::metrics::LatencyHistogram;
+
+/// Nanosecond timer for persistence latency tracking.
+#[inline(always)]
+fn nanos_now() -> u64 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    let start = START.get_or_init(Instant::now);
+    start.elapsed().as_nanos() as u64
+}
 
 use super::arena::{SlotIndex, WALArena};
 use super::recovery::WalEntryHeader as RecoveryWalEntryHeader;
@@ -139,6 +150,7 @@ impl BufferPool {
 struct PendingWrite {
     entries: [PersistenceEntry; MAX_BATCH_SIZE],
     entry_count: usize,
+    submit_nanos: u64,
 }
 
 impl PendingWrite {
@@ -146,6 +158,7 @@ impl PendingWrite {
         Self {
             entries: [PersistenceEntry::empty(); MAX_BATCH_SIZE],
             entry_count: 0,
+            submit_nanos: 0,
         }
     }
 }
@@ -157,6 +170,7 @@ pub struct PersistenceWorker {
     buffer_pool: BufferPool,
     write_offset: u64,
     pending_writes: [Option<PendingWrite>; BUFFER_POOL_SIZE],
+    histogram: Option<Arc<LatencyHistogram>>,
 }
 
 impl PersistenceWorker {
@@ -176,7 +190,15 @@ impl PersistenceWorker {
             buffer_pool: BufferPool::new(BUFFER_POOL_SIZE),
             write_offset: 0,
             pending_writes: [None; BUFFER_POOL_SIZE],
+            histogram: None,
         })
+    }
+
+    /// Create with latency histogram for disk I/O tracking.
+    pub fn with_histogram(wal_path: &str, ring_size: u32, histogram: Arc<LatencyHistogram>) -> std::io::Result<Self> {
+        let mut worker = Self::new(wal_path, ring_size)?;
+        worker.histogram = Some(histogram);
+        Ok(worker)
     }
 
     /// Process entries from consumer, write to disk, update frontier.
@@ -273,6 +295,7 @@ impl PersistenceWorker {
 
         self.ring.submit()?;
         self.write_offset += BLOCK_SIZE as u64;
+        pending.submit_nanos = nanos_now();
         self.pending_writes[buf_idx] = Some(pending);
 
         Ok(())
@@ -296,6 +319,12 @@ impl PersistenceWorker {
                 }
 
                 if let Some(pending) = self.pending_writes[buf_idx].take() {
+                    // Record disk latency: submit → CQE
+                    if let Some(ref hist) = self.histogram {
+                        let latency = nanos_now().saturating_sub(pending.submit_nanos);
+                        hist.record(latency);
+                    }
+
                     for i in 0..pending.entry_count {
                         if completed_count < completed_entries.len() {
                             completed_entries[completed_count] = pending.entries[i];

@@ -29,6 +29,8 @@ pub use kernel::{DurableHandle, TwoLaneDurableKernel};
 pub use metrics::{AdmissionMetrics, LatencyHistogram, MetricsSnapshot, PersistenceMetrics};
 #[cfg(feature = "std")]
 pub use metrics::{MetricsScraper, PrometheusExporter};
+#[cfg(feature = "networking")]
+pub use metrics::MetricsServer;
 pub use state::StateCell;
 pub use topology::{CausalClock, FactId};
 pub use view::View;

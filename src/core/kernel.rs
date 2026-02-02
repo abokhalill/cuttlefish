@@ -15,8 +15,16 @@ use super::state::{StateCell, STATE_CELL_SIZE};
 use super::topology::{CausalClock, FactId, PreciseClock, ESCALATION_THRESHOLD};
 use super::view::View;
 
-/// Nanosecond timer. Uses TSC on x86, clock_gettime elsewhere.
-#[cfg(feature = "std")]
+/// Nanosecond timer. Uses RDTSC on x86_64, clock_gettime elsewhere.
+#[cfg(all(feature = "std", target_arch = "x86_64"))]
+#[inline(always)]
+fn nanos_now() -> u64 {
+    // RDTSC: ~20 cycles, returns TSC ticks. Assume ~3GHz = 0.33ns/tick.
+    // For relative timing, raw ticks are fine (histogram buckets are powers of 2).
+    unsafe { core::arch::x86_64::_rdtsc() }
+}
+
+#[cfg(all(feature = "std", not(target_arch = "x86_64")))]
 #[inline(always)]
 fn nanos_now() -> u64 {
     use std::time::Instant;

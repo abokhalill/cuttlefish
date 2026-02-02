@@ -1,5 +1,11 @@
 //! Escrow for BoundedCommutative. Partition headroom → local ops stay coordination-free.
 
+#[cfg(feature = "std")]
+pub mod pending;
+
+#[cfg(feature = "std")]
+pub use pending::{PendingRequest, PendingRequestMap};
+
 use crate::core::topology::FactId;
 
 pub type NodeId = u64;

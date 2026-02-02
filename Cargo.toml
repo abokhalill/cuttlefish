@@ -81,6 +81,10 @@ harness = false
 name = "evaluation"
 harness = false
 
+[[bench]]
+name = "metrics_overhead"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"

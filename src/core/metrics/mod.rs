@@ -5,8 +5,14 @@ use core::sync::atomic::{AtomicU64, Ordering};
 #[cfg(feature = "std")]
 pub mod prometheus;
 
+#[cfg(feature = "networking")]
+pub mod http;
+
 #[cfg(feature = "std")]
 pub use prometheus::{MetricsScraper, PrometheusExporter};
+
+#[cfg(feature = "networking")]
+pub use http::MetricsServer;
 
 /// 64-bucket histogram. Power-of-two scale: bucket[i] = count of samples < 2^(i+3) ns.
 /// Bucket 0: <8ns, Bucket 1: <16ns, ..., Bucket 63: ≥2^66ns (overflow).
