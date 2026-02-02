@@ -33,6 +33,7 @@ io-uring = { version = "0.7", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["html_reports"] }
+proptest = "1.5"
 
 [[bench]]
 name = "delta_i"
