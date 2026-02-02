@@ -12,6 +12,8 @@
 //! - BLAKE3 Only: No XOR-checksums
 //! - AVX2: Use contains_simd for all dependency checks
 
+#![cfg(all(feature = "persistence", target_os = "linux"))]
+
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 

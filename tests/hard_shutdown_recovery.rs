@@ -6,6 +6,8 @@
 //! 3. Simulating a "hard shutdown" (truncating mid-write)
 //! 4. Recovering from the WAL and verifying exact FrontierState match
 
+#![cfg(all(feature = "persistence", target_os = "linux"))]
+
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::time::Instant;
