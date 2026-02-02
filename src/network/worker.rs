@@ -61,6 +61,18 @@ pub enum NetworkCommand {
     BroadcastFact { fact_id: FactId, payload: Vec<u8> },
     /// Request facts from peers.
     PullFacts { fact_ids: Vec<FactId> },
+    /// Request escrow quota from peers.
+    RequestQuota {
+        invariant_id: u64,
+        amount: i128,
+    },
+    /// Grant escrow quota to a peer.
+    GrantQuota {
+        peer: PeerAddr,
+        request_id: u64,
+        invariant_id: u64,
+        granted: i128,
+    },
     /// Shutdown the worker.
     Shutdown,
 }
@@ -76,6 +88,21 @@ pub enum NetworkEvent {
     PullRequested {
         peer: PeerAddr,
         fact_ids: Vec<FactId>,
+    },
+    /// Peer requested escrow quota.
+    QuotaRequested {
+        peer: PeerAddr,
+        request_id: u64,
+        from_node: u64,
+        invariant_id: u64,
+        amount: i128,
+    },
+    /// Peer granted escrow quota.
+    QuotaGranted {
+        peer: PeerAddr,
+        request_id: u64,
+        invariant_id: u64,
+        granted: i128,
     },
     /// Network error.
     Error { message: String },
@@ -206,6 +233,12 @@ impl WorkerInner {
                         NetworkCommand::PullFacts { fact_ids } => {
                             self.pull_facts_from_peers(fact_ids).await;
                         }
+                        NetworkCommand::RequestQuota { invariant_id, amount } => {
+                            self.broadcast_quota_request(invariant_id, amount).await;
+                        }
+                        NetworkCommand::GrantQuota { peer, request_id, invariant_id, granted } => {
+                            self.send_quota_grant(peer, request_id, invariant_id, granted).await;
+                        }
                         NetworkCommand::Shutdown => {
                             break;
                         }
@@ -264,6 +297,27 @@ impl WorkerInner {
                         .send(NetworkEvent::PullRequested { peer, fact_ids })
                         .await;
                 }
+                Ok(NetworkMessage::QuotaRequest(req)) => {
+                    let _ = event_tx
+                        .send(NetworkEvent::QuotaRequested {
+                            peer,
+                            request_id: req.request_id,
+                            from_node: req.from_node,
+                            invariant_id: req.invariant_id,
+                            amount: req.amount,
+                        })
+                        .await;
+                }
+                Ok(NetworkMessage::QuotaGrant(grant)) => {
+                    let _ = event_tx
+                        .send(NetworkEvent::QuotaGranted {
+                            peer,
+                            request_id: grant.request_id,
+                            invariant_id: grant.invariant_id,
+                            granted: grant.granted,
+                        })
+                        .await;
+                }
                 _ => {}
             }
         }
@@ -313,6 +367,48 @@ impl WorkerInner {
             if let Ok(mut stream) = TcpStream::connect(peer).await {
                 let _ = stream.write_all(&data).await;
             }
+        }
+    }
+
+    async fn broadcast_quota_request(&self, invariant_id: u64, amount: i128) {
+        use super::protocol::{QuotaRequestPayload, NetworkMessage};
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
+        let request_id = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        let payload = QuotaRequestPayload {
+            request_id,
+            from_node: self.config.tcp_bind.port() as u64, // Use port as node ID for now
+            invariant_id,
+            amount,
+        };
+
+        let msg = NetworkMessage::QuotaRequest(payload);
+        let data = msg.encode();
+
+        for peer in &self.config.peers {
+            if let Ok(mut stream) = TcpStream::connect(peer).await {
+                let _ = stream.write_all(&data).await;
+            }
+        }
+    }
+
+    async fn send_quota_grant(&self, peer: PeerAddr, request_id: u64, invariant_id: u64, granted: i128) {
+        use super::protocol::{QuotaGrantPayload, NetworkMessage};
+
+        let payload = QuotaGrantPayload {
+            request_id,
+            to_node: peer.port() as u64,
+            invariant_id,
+            granted,
+        };
+
+        let msg = NetworkMessage::QuotaGrant(payload);
+        let data = msg.encode();
+
+        if let Ok(mut stream) = TcpStream::connect(peer).await {
+            let _ = stream.write_all(&data).await;
         }
     }
 }

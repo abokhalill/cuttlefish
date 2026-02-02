@@ -10,9 +10,26 @@ use super::checkpoint::{Checkpoint, CheckpointError};
 use super::fact::Fact;
 use super::frontier::{build_deps_clock, check_dominance, FrontierState};
 use super::invariant::{Invariant, InvariantError};
+use super::metrics::LatencyHistogram;
 use super::state::{StateCell, STATE_CELL_SIZE};
 use super::topology::{CausalClock, FactId, PreciseClock, ESCALATION_THRESHOLD};
 use super::view::View;
+
+/// Nanosecond timer. Uses TSC on x86, clock_gettime elsewhere.
+#[cfg(feature = "std")]
+#[inline(always)]
+fn nanos_now() -> u64 {
+    use std::time::Instant;
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    let start = START.get_or_init(Instant::now);
+    start.elapsed().as_nanos() as u64
+}
+
+#[cfg(not(feature = "std"))]
+#[inline(always)]
+fn nanos_now() -> u64 {
+    0 // no_std: metrics disabled
+}
 
 /// Admission failed. Check the variant for why.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -334,6 +351,21 @@ impl<I: Invariant> TwoLaneKernel<I> {
             return Err(AdmitError::RequiresCoordination);
         }
         self.admit(fact_id, deps, payload)
+    }
+
+    /// Instrumented admit. Records latency to histogram. ~8ns overhead.
+    #[inline]
+    pub fn admit_instrumented(
+        &mut self,
+        fact_id: &FactId,
+        deps: &[FactId],
+        payload: &[u8],
+        histogram: &LatencyHistogram,
+    ) -> Result<(), AdmitError> {
+        let start = nanos_now();
+        let result = self.admit(fact_id, deps, payload);
+        histogram.record(nanos_now() - start);
+        result
     }
 
     #[inline(always)]

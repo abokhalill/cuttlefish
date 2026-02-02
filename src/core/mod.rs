@@ -26,7 +26,9 @@ pub use kernel::{
 
 #[cfg(all(feature = "persistence", target_os = "linux"))]
 pub use kernel::{DurableHandle, TwoLaneDurableKernel};
-pub use metrics::{AdmissionMetrics, MetricsSnapshot, PersistenceMetrics};
+pub use metrics::{AdmissionMetrics, LatencyHistogram, MetricsSnapshot, PersistenceMetrics};
+#[cfg(feature = "std")]
+pub use metrics::{MetricsScraper, PrometheusExporter};
 pub use state::StateCell;
 pub use topology::{CausalClock, FactId};
 pub use view::View;

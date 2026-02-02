@@ -26,6 +26,10 @@ pub enum MessageType {
     PullRequest = 3,
     /// Response with requested facts (TCP).
     PullResponse = 4,
+    /// Request escrow quota transfer.
+    QuotaRequest = 5,
+    /// Grant escrow quota.
+    QuotaGrant = 6,
 }
 
 impl MessageType {
@@ -35,8 +39,83 @@ impl MessageType {
             2 => Some(Self::PushFact),
             3 => Some(Self::PullRequest),
             4 => Some(Self::PullResponse),
+            5 => Some(Self::QuotaRequest),
+            6 => Some(Self::QuotaGrant),
             _ => None,
         }
+    }
+}
+
+/// Invariant identifier for escrow.
+pub type InvariantId = u64;
+
+/// Quota request payload.
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct QuotaRequestPayload {
+    pub request_id: u64,
+    pub from_node: u64,
+    pub invariant_id: InvariantId,
+    pub amount: i128,
+}
+
+impl QuotaRequestPayload {
+    pub const SIZE: usize = 40;
+
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+        let mut buf = [0u8; Self::SIZE];
+        buf[0..8].copy_from_slice(&self.request_id.to_le_bytes());
+        buf[8..16].copy_from_slice(&self.from_node.to_le_bytes());
+        buf[16..24].copy_from_slice(&self.invariant_id.to_le_bytes());
+        buf[24..40].copy_from_slice(&self.amount.to_le_bytes());
+        buf
+    }
+
+    pub fn from_bytes(buf: &[u8]) -> Option<Self> {
+        if buf.len() < Self::SIZE {
+            return None;
+        }
+        Some(Self {
+            request_id: u64::from_le_bytes(buf[0..8].try_into().ok()?),
+            from_node: u64::from_le_bytes(buf[8..16].try_into().ok()?),
+            invariant_id: u64::from_le_bytes(buf[16..24].try_into().ok()?),
+            amount: i128::from_le_bytes(buf[24..40].try_into().ok()?),
+        })
+    }
+}
+
+/// Quota grant payload.
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct QuotaGrantPayload {
+    pub request_id: u64,
+    pub to_node: u64,
+    pub invariant_id: InvariantId,
+    pub granted: i128,
+}
+
+impl QuotaGrantPayload {
+    pub const SIZE: usize = 40;
+
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+        let mut buf = [0u8; Self::SIZE];
+        buf[0..8].copy_from_slice(&self.request_id.to_le_bytes());
+        buf[8..16].copy_from_slice(&self.to_node.to_le_bytes());
+        buf[16..24].copy_from_slice(&self.invariant_id.to_le_bytes());
+        buf[24..40].copy_from_slice(&self.granted.to_le_bytes());
+        buf
+    }
+
+    pub fn from_bytes(buf: &[u8]) -> Option<Self> {
+        if buf.len() < Self::SIZE {
+            return None;
+        }
+        Some(Self {
+            request_id: u64::from_le_bytes(buf[0..8].try_into().ok()?),
+            to_node: u64::from_le_bytes(buf[8..16].try_into().ok()?),
+            invariant_id: u64::from_le_bytes(buf[16..24].try_into().ok()?),
+            granted: i128::from_le_bytes(buf[24..40].try_into().ok()?),
+        })
     }
 }
 
@@ -140,6 +219,8 @@ pub enum NetworkMessage {
     PushFact { fact_id: FactId, payload: Vec<u8> },
     PullRequest { fact_ids: Vec<FactId> },
     PullResponse { facts: Vec<(FactId, Vec<u8>)> },
+    QuotaRequest(QuotaRequestPayload),
+    QuotaGrant(QuotaGrantPayload),
 }
 
 impl NetworkMessage {
@@ -189,6 +270,24 @@ impl NetworkMessage {
                 }
                 let crc = crc32fast::hash(&data);
                 let header = WireHeader::new(MessageType::PullResponse, data.len() as u32, crc);
+                let mut buf = Vec::with_capacity(WireHeader::SIZE + data.len());
+                buf.extend_from_slice(&header.to_bytes());
+                buf.extend_from_slice(&data);
+                buf
+            }
+            NetworkMessage::QuotaRequest(req) => {
+                let data = req.to_bytes();
+                let crc = crc32fast::hash(&data);
+                let header = WireHeader::new(MessageType::QuotaRequest, data.len() as u32, crc);
+                let mut buf = Vec::with_capacity(WireHeader::SIZE + data.len());
+                buf.extend_from_slice(&header.to_bytes());
+                buf.extend_from_slice(&data);
+                buf
+            }
+            NetworkMessage::QuotaGrant(grant) => {
+                let data = grant.to_bytes();
+                let crc = crc32fast::hash(&data);
+                let header = WireHeader::new(MessageType::QuotaGrant, data.len() as u32, crc);
                 let mut buf = Vec::with_capacity(WireHeader::SIZE + data.len());
                 buf.extend_from_slice(&header.to_bytes());
                 buf.extend_from_slice(&data);
@@ -287,6 +386,16 @@ impl NetworkMessage {
                     facts.push((id, data));
                 }
                 Ok(NetworkMessage::PullResponse { facts })
+            }
+            MessageType::QuotaRequest => {
+                QuotaRequestPayload::from_bytes(payload)
+                    .map(NetworkMessage::QuotaRequest)
+                    .ok_or(ProtocolError::MalformedPayload)
+            }
+            MessageType::QuotaGrant => {
+                QuotaGrantPayload::from_bytes(payload)
+                    .map(NetworkMessage::QuotaGrant)
+                    .ok_or(ProtocolError::MalformedPayload)
             }
         }
     }
