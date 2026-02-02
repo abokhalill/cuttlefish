@@ -39,6 +39,7 @@ impl CachePaddedAtomicU32 {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     fn compare_exchange_weak(
         &self,
         current: u32,

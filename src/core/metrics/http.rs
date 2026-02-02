@@ -29,7 +29,12 @@ impl MetricsServer {
         let shutdown_clone = shutdown.clone();
 
         let handle = thread::spawn(move || {
-            Self::run_loop(listener, admission_histogram, persistence_histogram, shutdown_clone);
+            Self::run_loop(
+                listener,
+                admission_histogram,
+                persistence_histogram,
+                shutdown_clone,
+            );
         });
 
         Ok(Self {
@@ -54,7 +59,12 @@ impl MetricsServer {
 
                     if let Ok(n) = stream.read(&mut request_buf) {
                         if n > 0 {
-                            Self::handle_request(&mut stream, &request_buf[..n], &admission, &persistence);
+                            Self::handle_request(
+                                &mut stream,
+                                &request_buf[..n],
+                                &admission,
+                                &persistence,
+                            );
                         }
                     }
                 }
@@ -113,7 +123,10 @@ impl MetricsServer {
         let buckets = hist.snapshot();
         let mut cumulative = 0u64;
 
-        out.push_str(&format!("# HELP {}_bucket {} latency histogram (ns)\n", name, name));
+        out.push_str(&format!(
+            "# HELP {}_bucket {} latency histogram (ns)\n",
+            name, name
+        ));
         out.push_str(&format!("# TYPE {}_bucket histogram\n", name));
 
         for (i, &count) in buckets.iter().enumerate() {
@@ -122,7 +135,10 @@ impl MetricsServer {
             if le == u64::MAX {
                 out.push_str(&format!("{}_bucket{{le=\"+Inf\"}} {}\n", name, cumulative));
             } else {
-                out.push_str(&format!("{}_bucket{{le=\"{}\"}} {}\n", name, le, cumulative));
+                out.push_str(&format!(
+                    "{}_bucket{{le=\"{}\"}} {}\n",
+                    name, le, cumulative
+                ));
             }
         }
 

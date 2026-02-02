@@ -113,8 +113,8 @@ impl WalEntryHeader {
 
         // Constant-time comparison
         let mut diff = 0u8;
-        for i in 0..32 {
-            diff |= computed[i] ^ self.hash[i];
+        for (c, h) in computed.iter().zip(self.hash.iter()) {
+            diff |= c ^ h;
         }
         diff == 0
     }

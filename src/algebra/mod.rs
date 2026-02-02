@@ -11,11 +11,11 @@ pub mod causal_consistency;
 
 pub use crate::core::invariant::AlgebraicClass;
 pub use classes::{
-    BoundedInvariant, CommutativeInvariant, GroupInvariant, IdempotentInvariant,
-    LatticeInvariant, MonotonicInvariant,
+    BoundedInvariant, CommutativeInvariant, GroupInvariant, IdempotentInvariant, LatticeInvariant,
+    MonotonicInvariant,
 };
-pub use escrow::{EscrowAllocation, EscrowError, EscrowManager};
 pub use composition::{ComposedInvariant, ParallelComposition};
+pub use escrow::{EscrowAllocation, EscrowError, EscrowManager};
 pub use lattice::{BoundedLattice, JoinSemilattice, LatticeMerge, MeetSemilattice};
 pub use proofs::{CommutativityProof, ConvergenceWitness, CoordinationClass};
 

@@ -28,7 +28,7 @@ pub mod prelude {
 pub use core::kernel::{CausalMode, DualKernel, EscalatingKernel, MultiKernel};
 pub use core::topology::{resolve_conflict, wins_conflict, PreciseClock};
 pub use core::{
-    AdmitError, AlgebraicClass, CausalClock, Checkpoint, CheckpointError, Fact, FactHeader,
-    FactId, Frontier, FrontierState, Horizon, Invariant, InvariantError, Kernel, PruningPolicy,
+    AdmitError, AlgebraicClass, CausalClock, Checkpoint, CheckpointError, Fact, FactHeader, FactId,
+    Frontier, FrontierState, Horizon, Invariant, InvariantError, Kernel, PruningPolicy,
     ReAnchorError, StateCell, View,
 };

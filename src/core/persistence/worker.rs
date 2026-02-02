@@ -178,8 +178,8 @@ impl PersistenceWorker {
     pub fn new(wal_path: &str, ring_size: u32) -> std::io::Result<Self> {
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
-            .append(false)
             .open(wal_path)?;
 
         let ring = IoUring::builder().setup_single_issuer().build(ring_size)?;
@@ -195,7 +195,11 @@ impl PersistenceWorker {
     }
 
     /// Create with latency histogram for disk I/O tracking.
-    pub fn with_histogram(wal_path: &str, ring_size: u32, histogram: Arc<LatencyHistogram>) -> std::io::Result<Self> {
+    pub fn with_histogram(
+        wal_path: &str,
+        ring_size: u32,
+        histogram: Arc<LatencyHistogram>,
+    ) -> std::io::Result<Self> {
         let mut worker = Self::new(wal_path, ring_size)?;
         worker.histogram = Some(histogram);
         Ok(worker)
@@ -290,7 +294,7 @@ impl PersistenceWorker {
             self.ring
                 .submission()
                 .push(&write_op)
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "SQ full"))?;
+                .map_err(|_| std::io::Error::other("SQ full"))?;
         }
 
         self.ring.submit()?;
@@ -346,7 +350,7 @@ impl PersistenceWorker {
                 self.ring
                     .submission()
                     .push(&fsync_op)
-                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "SQ full"))?;
+                    .map_err(|_| std::io::Error::other("SQ full"))?;
             }
             self.ring.submit_and_wait(1)?;
 
@@ -389,6 +393,7 @@ impl ArenaSlotEntry {
 
 /// Pending write tracking for arena-based worker.
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 struct PendingArenaWrite {
     buffer_idx: usize,
     slot_indices: [SlotIndex; MAX_BATCH_SIZE],
@@ -415,6 +420,7 @@ impl ArenaPersistenceWorker {
     pub fn new(wal_path: &str, arena: Arc<WALArena>, ring_size: u32) -> std::io::Result<Self> {
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .read(true)
             .open(wal_path)?;
@@ -537,7 +543,7 @@ impl ArenaPersistenceWorker {
             self.ring
                 .submission()
                 .push(&write_op)
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "SQ full"))?;
+                .map_err(|_| std::io::Error::other("SQ full"))?;
         }
 
         self.ring.submit()?;
@@ -602,22 +608,22 @@ impl ArenaPersistenceWorker {
                 self.ring
                     .submission()
                     .push(&fsync_op)
-                    .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "SQ full"))?;
+                    .map_err(|_| std::io::Error::other("SQ full"))?;
             }
             self.ring.submit_and_wait(1)?;
 
             let cq = self.ring.completion();
             for cqe in cq {
                 if cqe.result() < 0 {
-                    for i in 0..completed_count {
-                        let _ = self.arena.complete_persistence(completed_slots[i].0);
+                    for slot in completed_slots.iter().take(completed_count) {
+                        let _ = self.arena.complete_persistence(slot.0);
                     }
                     return Err(std::io::Error::from_raw_os_error(-cqe.result()));
                 }
             }
 
-            for i in 0..completed_count {
-                let (slot_idx, fact_id) = completed_slots[i];
+            for slot in completed_slots.iter().take(completed_count) {
+                let (slot_idx, fact_id) = *slot;
                 self.frontier.clock.observe(&fact_id);
                 let _ = self.arena.complete_persistence(slot_idx);
             }

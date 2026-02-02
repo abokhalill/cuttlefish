@@ -62,19 +62,10 @@ impl PrometheusExporter {
             "# TYPE {}_admission_latency_p50 gauge\n",
             self.prefix
         ));
-        out.push_str(&format!(
-            "{}_admission_latency_p50 {}\n",
-            self.prefix, p50
-        ));
+        out.push_str(&format!("{}_admission_latency_p50 {}\n", self.prefix, p50));
 
-        out.push_str(&format!(
-            "{}_admission_latency_p90 {}\n",
-            self.prefix, p90
-        ));
-        out.push_str(&format!(
-            "{}_admission_latency_p99 {}\n",
-            self.prefix, p99
-        ));
+        out.push_str(&format!("{}_admission_latency_p90 {}\n", self.prefix, p90));
+        out.push_str(&format!("{}_admission_latency_p99 {}\n", self.prefix, p99));
 
         out
     }
@@ -118,10 +109,7 @@ impl MetricsScraper {
 
     /// Get latest rendered metrics.
     pub fn get(&self) -> String {
-        self.output
-            .read()
-            .map(|g| g.clone())
-            .unwrap_or_default()
+        self.output.read().map(|g| g.clone()).unwrap_or_default()
     }
 
     /// Shutdown the scraper thread.

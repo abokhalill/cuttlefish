@@ -26,7 +26,9 @@ impl LatencyHistogram {
     pub const fn new() -> Self {
         #[allow(clippy::declare_interior_mutable_const)]
         const ZERO: AtomicU64 = AtomicU64::new(0);
-        Self { buckets: [ZERO; 64] }
+        Self {
+            buckets: [ZERO; 64],
+        }
     }
 
     /// Record a latency sample. Branchless bucket selection, ~2 cycles.
@@ -44,7 +46,11 @@ impl LatencyHistogram {
         } else {
             let bits = 64 - latency_ns.leading_zeros() as usize;
             let idx = bits - 3;
-            if idx > 63 { 63 } else { idx }
+            if idx > 63 {
+                63
+            } else {
+                idx
+            }
         }
     }
 
@@ -161,7 +167,8 @@ impl AdmissionMetrics {
     #[inline(always)]
     pub fn record_admit(&self, latency_ns: u64) {
         self.admits.fetch_add(1, Ordering::Relaxed);
-        self.total_latency_ns.fetch_add(latency_ns, Ordering::Relaxed);
+        self.total_latency_ns
+            .fetch_add(latency_ns, Ordering::Relaxed);
         self.update_max_latency(latency_ns);
     }
 
@@ -262,7 +269,8 @@ impl PersistenceMetrics {
     pub fn record_write(&self, bytes: u64, latency_ns: u64) {
         self.writes.fetch_add(1, Ordering::Relaxed);
         self.bytes_written.fetch_add(bytes, Ordering::Relaxed);
-        self.total_write_latency_ns.fetch_add(latency_ns, Ordering::Relaxed);
+        self.total_write_latency_ns
+            .fetch_add(latency_ns, Ordering::Relaxed);
         self.update_max_latency(latency_ns);
     }
 

@@ -62,10 +62,7 @@ pub enum NetworkCommand {
     /// Request facts from peers.
     PullFacts { fact_ids: Vec<FactId> },
     /// Request escrow quota from peers.
-    RequestQuota {
-        invariant_id: u64,
-        amount: i128,
-    },
+    RequestQuota { invariant_id: u64, amount: i128 },
     /// Grant escrow quota to a peer.
     GrantQuota {
         peer: PeerAddr,
@@ -324,15 +321,12 @@ impl WorkerInner {
     }
 
     async fn handle_udp_message(&mut self, data: &[u8], peer: PeerAddr) {
-        match NetworkMessage::decode(data) {
-            Ok(NetworkMessage::GossipClock(clock)) => {
-                self.peer_clocks.insert(peer, clock);
-                let _ = self
-                    .event_tx
-                    .send(NetworkEvent::GossipReceived { peer, clock })
-                    .await;
-            }
-            _ => {}
+        if let Ok(NetworkMessage::GossipClock(clock)) = NetworkMessage::decode(data) {
+            self.peer_clocks.insert(peer, clock);
+            let _ = self
+                .event_tx
+                .send(NetworkEvent::GossipReceived { peer, clock })
+                .await;
         }
     }
 
@@ -371,7 +365,7 @@ impl WorkerInner {
     }
 
     async fn broadcast_quota_request(&self, invariant_id: u64, amount: i128) {
-        use super::protocol::{QuotaRequestPayload, NetworkMessage};
+        use super::protocol::{NetworkMessage, QuotaRequestPayload};
         use std::sync::atomic::{AtomicU64, Ordering};
 
         static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -394,8 +388,14 @@ impl WorkerInner {
         }
     }
 
-    async fn send_quota_grant(&self, peer: PeerAddr, request_id: u64, invariant_id: u64, granted: i128) {
-        use super::protocol::{QuotaGrantPayload, NetworkMessage};
+    async fn send_quota_grant(
+        &self,
+        peer: PeerAddr,
+        request_id: u64,
+        invariant_id: u64,
+        granted: i128,
+    ) {
+        use super::protocol::{NetworkMessage, QuotaGrantPayload};
 
         let payload = QuotaGrantPayload {
             request_id,

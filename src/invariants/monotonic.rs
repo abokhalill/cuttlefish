@@ -476,7 +476,10 @@ mod tests {
         assert!(max.is_coordination_free());
 
         let gcounter = GCounterInvariant::new();
-        assert_eq!(gcounter.algebraic_class(), Some(AlgebraicClass::Commutative));
+        assert_eq!(
+            gcounter.algebraic_class(),
+            Some(AlgebraicClass::Commutative)
+        );
         assert!(gcounter.is_coordination_free());
 
         let lww = LWWInvariant::new();
@@ -484,7 +487,10 @@ mod tests {
         assert!(lww.is_coordination_free());
 
         let bounded = BoundedGCounterInvariant::new();
-        assert_eq!(bounded.algebraic_class(), Some(AlgebraicClass::BoundedCommutative));
+        assert_eq!(
+            bounded.algebraic_class(),
+            Some(AlgebraicClass::BoundedCommutative)
+        );
         assert!(!bounded.is_coordination_free());
     }
 }

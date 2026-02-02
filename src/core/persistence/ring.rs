@@ -71,7 +71,7 @@ impl<const N: usize> SPSCBuffer<N> {
     };
 
     pub fn new() -> Self {
-        let _ = Self::_ASSERT_POWER_OF_TWO;
+        const { assert!(N > 0 && (N & (N - 1)) == 0, "N must be power of two") };
         Self {
             buffer: UnsafeCell::new([PersistenceEntry::empty(); N]),
             head: CachePadded::new(AtomicUsize::new(0)),
@@ -124,6 +124,11 @@ impl<'a, const N: usize> SPSCProducer<'a, N> {
         let head = self.ring.head.load(Ordering::Relaxed);
         let tail = self.ring.tail.load(Ordering::Acquire);
         head.wrapping_sub(tail) >= N
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     #[inline(always)]

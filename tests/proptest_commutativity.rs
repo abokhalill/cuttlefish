@@ -11,8 +11,8 @@ use ctfs::invariants::monotonic::{GCounterInvariant, LWWInvariant, MaxInvariant}
 use ctfs::invariants::total_supply::{DeltaPayload, TotalSupplyInvariant};
 
 fn state_with_balance(balance: i128, min: i128, max: i128) -> StateCell {
-    use zerocopy::IntoBytes;
     use ctfs::invariants::total_supply::ConservationState;
+    use zerocopy::IntoBytes;
 
     let mut state = StateCell::new();
     let conservation = ConservationState::new(balance, min, max);

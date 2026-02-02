@@ -62,7 +62,7 @@ pub struct QuotaRequestPayload {
 impl QuotaRequestPayload {
     pub const SIZE: usize = 40;
 
-    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
         let mut buf = [0u8; Self::SIZE];
         buf[0..8].copy_from_slice(&self.request_id.to_le_bytes());
         buf[8..16].copy_from_slice(&self.from_node.to_le_bytes());
@@ -97,7 +97,7 @@ pub struct QuotaGrantPayload {
 impl QuotaGrantPayload {
     pub const SIZE: usize = 40;
 
-    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
         let mut buf = [0u8; Self::SIZE];
         buf[0..8].copy_from_slice(&self.request_id.to_le_bytes());
         buf[8..16].copy_from_slice(&self.to_node.to_le_bytes());
@@ -389,16 +389,12 @@ impl NetworkMessage {
                 }
                 Ok(NetworkMessage::PullResponse { facts })
             }
-            MessageType::QuotaRequest => {
-                QuotaRequestPayload::from_bytes(payload)
-                    .map(NetworkMessage::QuotaRequest)
-                    .ok_or(ProtocolError::MalformedPayload)
-            }
-            MessageType::QuotaGrant => {
-                QuotaGrantPayload::from_bytes(payload)
-                    .map(NetworkMessage::QuotaGrant)
-                    .ok_or(ProtocolError::MalformedPayload)
-            }
+            MessageType::QuotaRequest => QuotaRequestPayload::from_bytes(payload)
+                .map(NetworkMessage::QuotaRequest)
+                .ok_or(ProtocolError::MalformedPayload),
+            MessageType::QuotaGrant => QuotaGrantPayload::from_bytes(payload)
+                .map(NetworkMessage::QuotaGrant)
+                .ok_or(ProtocolError::MalformedPayload),
         }
     }
 }
