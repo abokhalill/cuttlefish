@@ -2,11 +2,11 @@
 //! Target: < 100ns for memory update + SPSC buffer push.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use cuttlefish::core::kernel::DurableKernel;
-use cuttlefish::core::persistence::{PersistenceFrontier, SPSCBuffer};
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::FactId;
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::core::kernel::DurableKernel;
+use ctfs::core::persistence::{PersistenceFrontier, SPSCBuffer};
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::FactId;
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use std::hint::black_box;
 use zerocopy::IntoBytes;
 
@@ -59,7 +59,7 @@ fn bench_durable_admission(c: &mut Criterion) {
 
 /// Benchmark just the SPSC push (no invariant).
 fn bench_spsc_push_only(c: &mut Criterion) {
-    use cuttlefish::core::persistence::PersistenceEntry;
+    use ctfs::core::persistence::PersistenceEntry;
 
     let buffer: SPSCBuffer<4096> = SPSCBuffer::new();
     let (producer, consumer) = buffer.split();
@@ -87,7 +87,7 @@ fn bench_spsc_push_only(c: &mut Criterion) {
 
 /// Benchmark invariant + state update only (no persistence).
 fn bench_invariant_only(c: &mut Criterion) {
-    use cuttlefish::core::kernel::Kernel;
+    use ctfs::core::kernel::Kernel;
 
     let state = make_conservation_state(0, i128::MIN, i128::MAX);
     let mut kernel = Kernel::with_state(TotalSupplyInvariant::new(), state);

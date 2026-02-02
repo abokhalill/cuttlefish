@@ -8,10 +8,10 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::hint::black_box as std_black_box;
 
-use cuttlefish::core::kernel::TwoLaneKernel;
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::{CausalClock, ExactCausalIndex, FactId};
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::core::kernel::TwoLaneKernel;
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::{CausalClock, ExactCausalIndex, FactId};
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn make_conservation_state(balance: i128, min: i128, max: i128) -> StateCell {

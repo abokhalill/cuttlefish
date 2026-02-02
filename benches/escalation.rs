@@ -3,10 +3,10 @@
 //! Target: Even in precise mode, admission must stay < 1,000ns (1µs).
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use cuttlefish::core::kernel::{CausalMode, EscalatingKernel};
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::FactId;
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::core::kernel::{CausalMode, EscalatingKernel};
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::FactId;
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use std::hint::black_box;
 use zerocopy::IntoBytes;
 
@@ -158,7 +158,7 @@ fn bench_escalation_transition(c: &mut Criterion) {
 
 /// Benchmark conflict resolution (deterministic tie-breaking).
 fn bench_conflict_resolution(c: &mut Criterion) {
-    use cuttlefish::core::topology::{resolve_conflict, wins_conflict};
+    use ctfs::core::topology::{resolve_conflict, wins_conflict};
 
     let fact_a: FactId = [0x11; 32];
     let fact_b: FactId = [0x22; 32];

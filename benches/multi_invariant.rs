@@ -1,9 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use cuttlefish::core::kernel::DualKernel;
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::FactId;
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
-use cuttlefish::invariants::uniqueness::{UniquenessInvariant, UniquenessPayload};
+use ctfs::core::kernel::DualKernel;
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::FactId;
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::invariants::uniqueness::{UniquenessInvariant, UniquenessPayload};
 use zerocopy::IntoBytes;
 
 fn make_conservation_state(balance: i128, min: i128, max: i128) -> StateCell {

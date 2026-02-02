@@ -1,9 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use cuttlefish::core::frontier::build_deps_clock;
-use cuttlefish::core::kernel::Kernel;
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::{CausalClock, FactId};
-use cuttlefish::invariants::total_supply::{ConservationState, DeltaPayload, TotalSupplyInvariant};
+use ctfs::core::frontier::build_deps_clock;
+use ctfs::core::kernel::Kernel;
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::{CausalClock, FactId};
+use ctfs::invariants::total_supply::{ConservationState, DeltaPayload, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn make_state_cell(balance: i128, min: i128, max: i128) -> StateCell {

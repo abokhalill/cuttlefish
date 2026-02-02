@@ -4,13 +4,13 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughpu
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Mutex;
 
-use cuttlefish::algebra::lattice::{GSetLattice, JoinSemilattice, LatticeMerge, MaxU64};
-use cuttlefish::core::kernel::Kernel;
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::FactId;
-use cuttlefish::invariants::graph::GGraphInvariant;
-use cuttlefish::invariants::monotonic::{GCounterInvariant, MaxInvariant};
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::algebra::lattice::{GSetLattice, JoinSemilattice, LatticeMerge, MaxU64};
+use ctfs::core::kernel::Kernel;
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::FactId;
+use ctfs::invariants::graph::GGraphInvariant;
+use ctfs::invariants::monotonic::{GCounterInvariant, MaxInvariant};
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn bench_raw_i128_add(c: &mut Criterion) {
@@ -191,7 +191,7 @@ fn bench_throughput_conservation(c: &mut Criterion) {
 }
 
 fn bench_causal_clock_observe(c: &mut Criterion) {
-    use cuttlefish::core::topology::CausalClock;
+    use ctfs::core::topology::CausalClock;
 
     let mut clock = CausalClock::new();
     let mut counter = 0u64;
@@ -207,7 +207,7 @@ fn bench_causal_clock_observe(c: &mut Criterion) {
 }
 
 fn bench_causal_clock_dominates(c: &mut Criterion) {
-    use cuttlefish::core::topology::CausalClock;
+    use ctfs::core::topology::CausalClock;
 
     let mut clock_a = CausalClock::new();
     let mut clock_b = CausalClock::new();
@@ -227,7 +227,7 @@ fn bench_causal_clock_dominates(c: &mut Criterion) {
 }
 
 fn bench_exact_index_insert(c: &mut Criterion) {
-    use cuttlefish::core::topology::ExactCausalIndex;
+    use ctfs::core::topology::ExactCausalIndex;
 
     let mut index = ExactCausalIndex::new();
     let mut counter = 0u64;
@@ -243,7 +243,7 @@ fn bench_exact_index_insert(c: &mut Criterion) {
 }
 
 fn bench_exact_index_contains(c: &mut Criterion) {
-    use cuttlefish::core::topology::ExactCausalIndex;
+    use ctfs::core::topology::ExactCausalIndex;
 
     let mut index = ExactCausalIndex::new();
 

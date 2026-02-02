@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use cuttlefish::core::invariant::Invariant;
-use cuttlefish::invariants::total_supply::{ConservationState, DeltaPayload, TotalSupplyInvariant};
+use ctfs::core::invariant::Invariant;
+use ctfs::invariants::total_supply::{ConservationState, DeltaPayload, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn bench_conservation_delta_i(c: &mut Criterion) {

@@ -3,12 +3,12 @@
 //! Target: Verification + State Import < 5,000ns (5µs)
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use cuttlefish::core::checkpoint::{Attestation, Checkpoint, ProofEnvelope};
-use cuttlefish::core::frontier::Frontier;
-use cuttlefish::core::kernel::Kernel;
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::{CausalClock, FactId};
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::core::checkpoint::{Attestation, Checkpoint, ProofEnvelope};
+use ctfs::core::frontier::Frontier;
+use ctfs::core::kernel::Kernel;
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::{CausalClock, FactId};
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn make_conservation_state(balance: i128, min: i128, max: i128) -> StateCell {

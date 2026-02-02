@@ -2,10 +2,10 @@
 //! Measures the overhead of security hardening vs raw performance.
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use cuttlefish::core::checkpoint::{Checkpoint, CheckpointHeader, WalHasher};
-use cuttlefish::core::frontier::FrontierState;
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::CausalClock;
+use ctfs::core::checkpoint::{Checkpoint, CheckpointHeader, WalHasher};
+use ctfs::core::frontier::FrontierState;
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::CausalClock;
 use zerocopy::IntoBytes;
 
 fn bench_tiered_hash_computation(c: &mut Criterion) {

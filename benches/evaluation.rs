@@ -3,11 +3,11 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::time::{Duration, Instant};
 
-use cuttlefish::core::checkpoint::Checkpoint;
-use cuttlefish::core::kernel::TwoLaneKernel;
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::{CausalClock, ExactCausalIndex, FactId};
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::core::checkpoint::Checkpoint;
+use ctfs::core::kernel::TwoLaneKernel;
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::{CausalClock, ExactCausalIndex, FactId};
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
 use zerocopy::IntoBytes;
 
 fn make_conservation_state(balance: i128, min: i128, max: i128) -> StateCell {
@@ -69,7 +69,7 @@ impl NaiveKernel {
         }
 
         // Apply invariant
-        use cuttlefish::core::invariant::Invariant;
+        use ctfs::core::invariant::Invariant;
         self.invariant
             .apply(payload, self.state.as_bytes_mut())
             .map_err(|_| ())?;

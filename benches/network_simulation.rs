@@ -7,11 +7,11 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
 
-use cuttlefish::core::kernel::{BroadcastBuffer, Kernel, BROADCAST_BUFFER_SIZE};
-use cuttlefish::core::state::StateCell;
-use cuttlefish::core::topology::{CausalClock, FactId};
-use cuttlefish::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
-use cuttlefish::network::NetworkMessage;
+use ctfs::core::kernel::{BroadcastBuffer, Kernel, BROADCAST_BUFFER_SIZE};
+use ctfs::core::state::StateCell;
+use ctfs::core::topology::{CausalClock, FactId};
+use ctfs::invariants::total_supply::{ConservationState, TotalSupplyInvariant};
+use ctfs::network::NetworkMessage;
 use zerocopy::IntoBytes;
 
 fn make_conservation_state(balance: i128, min: i128, max: i128) -> StateCell {
