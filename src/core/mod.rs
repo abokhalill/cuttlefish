@@ -6,6 +6,7 @@ pub mod frontier;
 pub mod horizon;
 pub mod invariant;
 pub mod kernel;
+pub mod metrics;
 pub mod state;
 pub mod topology;
 pub mod view;
@@ -25,6 +26,7 @@ pub use kernel::{
 
 #[cfg(all(feature = "persistence", target_os = "linux"))]
 pub use kernel::{DurableHandle, TwoLaneDurableKernel};
+pub use metrics::{AdmissionMetrics, MetricsSnapshot, PersistenceMetrics};
 pub use state::StateCell;
 pub use topology::{CausalClock, FactId};
 pub use view::View;
