@@ -29,7 +29,6 @@ impl<T> core::ops::DerefMut for CachePadded<T> {
     }
 }
 
-/// Entry pushed to persistence queue.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct PersistenceEntry {

@@ -196,11 +196,13 @@ const _: () = {
 /// Pull request payload (list of FactIds we want).
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
+#[allow(dead_code)]
 pub struct PullRequestPayload {
     pub count: u32,
     _pad: [u8; 4],
 }
 
+#[allow(dead_code)]
 impl PullRequestPayload {
     pub const HEADER_SIZE: usize = 8;
 
@@ -403,6 +405,7 @@ impl NetworkMessage {
 
 /// Reconcile two clocks: returns FactIds that remote has but local doesn't.
 /// This is approximate due to Bloom filter nature—may include false positives.
+#[allow(dead_code)]
 pub fn reconcile_clocks(local: &CausalClock, remote: &CausalClock) -> bool {
     // If remote has bits we don't, they have facts we're missing
     !local.dominates(remote)

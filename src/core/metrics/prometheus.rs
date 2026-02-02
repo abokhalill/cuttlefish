@@ -31,8 +31,8 @@ impl PrometheusExporter {
             self.prefix
         ));
 
-        for i in 0..64 {
-            cumulative += buckets[i];
+        for (i, &count) in buckets.iter().enumerate() {
+            cumulative += count;
             let le = LatencyHistogram::bucket_le(i);
             if le == u64::MAX {
                 out.push_str(&format!(

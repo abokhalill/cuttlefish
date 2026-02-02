@@ -379,7 +379,7 @@ impl WorkerInner {
 
         let payload = QuotaRequestPayload {
             request_id,
-            from_node: self.config.tcp_bind.port() as u64, // Use port as node ID for now
+            from_node: self.config.tcp_bind.port() as u64,
             invariant_id,
             amount,
         };

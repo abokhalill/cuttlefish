@@ -4,16 +4,16 @@
 [![Documentation](https://docs.rs/ctfs/badge.svg)](https://docs.rs/ctfs)
 [![CI](https://github.com/abokhalill/cuttlefish/actions/workflows/ci.yml/badge.svg)](https://github.com/abokhalill/cuttlefish/actions/workflows/ci.yml)
 
-**Causal consistency at nanosecond latency. Algebraic invariants without coordination.**
+**Coordination-free distributed state. Nanosecond latency. Algebraic correctness.**
 
 ```
-Fact → Bloom Clock Check → Invariant Apply → Frontier Advance
-40ns end-to-end. 25M causally-ordered ops/sec. Zero consensus.
+Fact → Bloom Clock → Invariant → Frontier → Gossip
+286ns admission. 3.5M ops/sec. Zero consensus. Full observability.
 ```
 
-Distributed systems usually trade consistency for latency. Cuttlefish is a coordination-free state kernel that preserves strict invariants at the speed of your L1 cache.
+Distributed systems trade consistency for latency. Cuttlefish doesn't. It's a state kernel that enforces strict invariants at L1 cache speed by exploiting algebraic properties. If your operations commute, you don't need coordination.
 
-**Thesis:** Correctness is defined as a property of algebra, not execution order. If your operations commute, you don't need coordination. If they don't, it tells you at admission time in nanoseconds.
+**The thesis:** Correctness is algebra, not execution order. Commutative ops replicate without consensus. Non-commutative ops fail fast at admission. Bounded ops use escrow partitioning. The kernel tells you which is which.
 
 ---
 
@@ -21,14 +21,15 @@ Distributed systems usually trade consistency for latency. Cuttlefish is a coord
 
 | Operation | Latency | Notes |
 |-----------|---------|-------|
-| Full admission cycle | 40 ns | Causality + invariant + frontier |
-| Kernel admit (no deps) | 13 ns | Single invariant, no causal check |
+| Full admission cycle | 286 ns | Causality + invariant + frontier |
+| Instrumented admission | 298 ns | +12ns metrics overhead (4%) |
+| Histogram record | 1.3 ns | Power-of-two buckets, RDTSC |
 | Causal clock dominance | 700 ps | SIMD Bloom filter comparison |
 | Tiered hash verification | 280 ns | BLAKE3 checkpoint integrity |
 | Durable admission | 5.2 ns | Staged to io_uring, async fsync |
 | WAL hash (200B payload) | 230 ns | 940 MiB/s throughput |
 
-**Comparison:** etcd pays 1-10ms for linearizable writes. CockroachDB pays 1-50ms. Cuttlefish pays 40ns for causal+ consistency.
+**Comparison:** etcd pays 1-10ms for linearizable writes. CockroachDB pays 1-50ms. Cuttlefish pays 286ns for causal+ consistency with full Prometheus observability.
 
 ---
 
@@ -264,6 +265,70 @@ ctfs = { version = "1.0.0", features = ["networking"] }
 
 Gossip-based replication via `NetworkingKernel`. Facts are broadcast to peers; causality is enforced on receipt. Convergence is guaranteed for commutative invariants.
 
+### Protocol
+
+- **GossipClock**: Periodic Bloom clock exchange via UDP
+- **PushFact**: Reliable fact broadcast via TCP
+- **PullRequest/PullResponse**: Anti-entropy fact recovery
+- **QuotaRequest/QuotaGrant**: Escrow quota transfer for bounded invariants
+
+### Escrow Gossip
+
+Bounded invariants (e.g., inventory limits) use escrow partitioning. Each node gets a quota slice. When a node exhausts its local quota, it broadcasts `QuotaRequest` to peers. Nodes with surplus respond with `QuotaGrant`. Exponential backoff (500ms → 4s) prevents thundering herd.
+
+```rust
+use ctfs::algebra::escrow::{EscrowManager, PendingRequestMap};
+
+let mut escrow = EscrowManager::new(1000); // Global limit
+escrow.initialize(&[node_a, node_b])?;     // Split 500/500
+
+escrow.try_consume(node_a, 400)?;          // Local op, no coordination
+escrow.transfer(node_a, node_b, 50)?;      // Quota grant
+```
+
+---
+
+## Observability
+
+### Prometheus Metrics
+
+Feature-gated on `networking`. Exposes `GET /metrics` endpoint.
+
+```rust
+use ctfs::core::{LatencyHistogram, MetricsServer};
+use std::sync::Arc;
+
+let admission_hist = Arc::new(LatencyHistogram::new());
+let persistence_hist = Arc::new(LatencyHistogram::new());
+
+let server = MetricsServer::spawn(
+    "0.0.0.0:9090",
+    admission_hist.clone(),
+    Some(persistence_hist.clone()),
+)?;
+
+// Instrumented admission records latency automatically
+kernel.admit_instrumented(&fact_id, &deps, &payload, &admission_hist)?;
+```
+
+**Exported metrics:**
+- `ctfs_admission_latency_bucket{le="..."}` — Histogram buckets (power-of-two, 8ns → 2^66ns)
+- `ctfs_admission_latency_count` — Total admissions
+- `ctfs_admission_latency_p50/p90/p99` — Percentile gauges
+- `ctfs_persistence_latency_*` — Disk I/O latency (SPSC push → io_uring CQE)
+
+### Latency Histogram
+
+64 buckets, power-of-two scale. Cache-line aligned. Lock-free atomics. RDTSC timing on x86_64 (~6.6ns overhead per call).
+
+```rust
+let hist = LatencyHistogram::new();
+hist.record(latency_nanos);
+
+let (p50, p90, p99) = hist.percentiles();
+let buckets = hist.snapshot(); // [u64; 64]
+```
+
 ---
 
 ## Benchmarks
@@ -275,14 +340,17 @@ cargo bench
 # Specific suites
 cargo bench --bench kernel
 cargo bench --bench hardening
+cargo bench --bench metrics_overhead
 cargo bench --features persistence --bench durable_admission
 ```
 
 ### Selected Results (AMD Ryzen 7, Linux 6.x)
 
 ```
-kernel_admit_no_deps      13.0 ns
-full_admission_cycle      40.0 ns
+admit_baseline           286.0 ns
+admit_instrumented       298.0 ns  (+12ns overhead)
+histogram_record           1.3 ns
+nanos_now_rdtsc            6.6 ns
 causal_clock_dominates     0.7 ns
 checkpoint/tiered_hash   280.0 ns
 durable_admission          5.2 ns
@@ -344,4 +412,4 @@ MIT
 
 ---
 
-*"The fastest distributed system is the one that doesn't distribute."*
+*"The fastest distributed system is the one that doesn't coordinate."*

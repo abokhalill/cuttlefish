@@ -22,7 +22,7 @@ use crate::core::checkpoint::{Checkpoint, CheckpointHeader, CheckpointManager, W
 use crate::core::frontier::FrontierState;
 use crate::core::invariant::Invariant;
 use crate::core::state::StateCell;
-use crate::core::topology::{CausalClock, ExactCausalIndex, FactId};
+use crate::core::topology::{ExactCausalIndex, FactId};
 
 use super::arena::PAYLOAD_CAPACITY;
 

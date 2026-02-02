@@ -116,8 +116,8 @@ impl MetricsServer {
         out.push_str(&format!("# HELP {}_bucket {} latency histogram (ns)\n", name, name));
         out.push_str(&format!("# TYPE {}_bucket histogram\n", name));
 
-        for i in 0..64 {
-            cumulative += buckets[i];
+        for (i, &count) in buckets.iter().enumerate() {
+            cumulative += count;
             let le = LatencyHistogram::bucket_le(i);
             if le == u64::MAX {
                 out.push_str(&format!("{}_bucket{{le=\"+Inf\"}} {}\n", name, cumulative));
