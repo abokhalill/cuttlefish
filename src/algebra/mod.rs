@@ -2,6 +2,7 @@
 
 pub mod classes;
 pub mod composition;
+pub mod escrow;
 pub mod lattice;
 pub mod proofs;
 
@@ -13,6 +14,7 @@ pub use classes::{
     BoundedInvariant, CommutativeInvariant, GroupInvariant, IdempotentInvariant,
     LatticeInvariant, MonotonicInvariant,
 };
+pub use escrow::{EscrowAllocation, EscrowError, EscrowManager};
 pub use composition::{ComposedInvariant, ParallelComposition};
 pub use lattice::{BoundedLattice, JoinSemilattice, LatticeMerge, MeetSemilattice};
 pub use proofs::{CommutativityProof, ConvergenceWitness, CoordinationClass};
