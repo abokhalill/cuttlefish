@@ -92,14 +92,11 @@ impl Invariant for TotalSupplyInvariant {
 
         let new_balance = balance.wrapping_add(delta);
 
-        let underflow = (new_balance < min) as u8;
-        let overflow = (new_balance > max) as u8;
-
-        let error_code = underflow * (InvariantError::Underflow as u8)
-            + overflow * (InvariantError::Overflow as u8);
-
-        if error_code != 0 {
-            return Err(unsafe { core::mem::transmute::<u8, InvariantError>(error_code) });
+        if new_balance < min {
+            return Err(InvariantError::Underflow);
+        }
+        if new_balance > max {
+            return Err(InvariantError::Overflow);
         }
 
         let new_bytes = new_balance.to_le_bytes();
