@@ -928,12 +928,16 @@ mod networking {
                 }
             }
 
+            let mut scratch = self.state;
             self.invariant
-                .apply(payload, self.state.as_bytes_mut())
+                .apply(payload, scratch.as_bytes_mut())
                 .map_err(|_| AdmitError::InvariantViolation)?;
 
-            let _ = self.broadcast.try_push(*fact_id);
+            self.broadcast
+                .try_push(*fact_id)
+                .map_err(|_| AdmitError::BufferFull)?;
 
+            self.state = scratch;
             self.frontier.advance(*fact_id);
             Ok(())
         }
