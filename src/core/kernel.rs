@@ -62,6 +62,11 @@ pub enum AdmitError {
     PayloadTooLarge = 8,
     /// Invariant requires coordination but replicated mode requested.
     RequiresCoordination = 9,
+    /// Fact already admitted (dedup rejection).
+    DuplicateFact = 10,
+    /// Broadcast buffer full. Back off.
+    #[cfg(feature = "networking")]
+    BroadcastFull = 11,
 }
 
 /// When do you want your ACK?
@@ -321,6 +326,11 @@ impl<I: Invariant> TwoLaneKernel<I> {
         deps: &[FactId],
         payload: &[u8],
     ) -> Result<(), AdmitError> {
+        // dedup: reject already-observed facts (critical for non-idempotent invariants)
+        if self.exact_index.contains(fact_id) {
+            return Err(AdmitError::DuplicateFact);
+        }
+
         if !deps.is_empty() {
             let deps_clock = build_deps_clock(deps);
             if !check_dominance(&self.frontier.clock, &deps_clock) {
