@@ -13,6 +13,8 @@ pub type Frontier = ArrayVec<FactId, MAX_FRONTIER_WIDTH>;
 pub struct FrontierState {
     pub frontier: Frontier,
     pub clock: CausalClock,
+    // ring write head; wraps at MAX_FRONTIER_WIDTH for FIFO eviction
+    write_head: u8,
 }
 
 impl FrontierState {
@@ -21,6 +23,22 @@ impl FrontierState {
         Self {
             frontier: ArrayVec::new_const(),
             clock: CausalClock::new(),
+            write_head: 0,
+        }
+    }
+
+    /// reconstruct from persisted components (checkpoint recovery)
+    #[inline(always)]
+    pub fn from_parts(clock: CausalClock, frontier: Frontier) -> Self {
+        let write_head = if frontier.len() >= MAX_FRONTIER_WIDTH {
+            0
+        } else {
+            frontier.len() as u8
+        };
+        Self {
+            frontier,
+            clock,
+            write_head,
         }
     }
 
@@ -36,7 +54,10 @@ impl FrontierState {
         if self.frontier.len() < MAX_FRONTIER_WIDTH {
             self.frontier.push(fact_id);
         } else {
-            self.frontier[0] = fact_id;
+            // ring eviction: oldest entry gets replaced, head advances
+            let idx = self.write_head as usize;
+            self.frontier[idx] = fact_id;
+            self.write_head = ((idx + 1) % MAX_FRONTIER_WIDTH) as u8;
         }
     }
 

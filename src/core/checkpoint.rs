@@ -281,10 +281,7 @@ impl Checkpoint {
 
     /// Verify the checkpoint's tiered hash matches its state and frontier.
     pub fn verify_integrity(&self) -> bool {
-        let frontier_state = FrontierState {
-            clock: self.clock,
-            frontier: self.frontier.clone(),
-        };
+        let frontier_state = FrontierState::from_parts(self.clock, self.frontier.clone());
         Self::verify_tiered_hash(&self.state, &frontier_state, &self.state_hash)
     }
 
@@ -538,10 +535,7 @@ impl CheckpointManager {
             }
         }
 
-        let frontier_state = FrontierState {
-            clock,
-            frontier: frontier_facts,
-        };
+        let frontier_state = FrontierState::from_parts(clock, frontier_facts);
         let computed_hash = Checkpoint::compute_tiered_hash(&state, &frontier_state);
 
         let mut diff = 0u8;
