@@ -171,13 +171,14 @@ pub const ESCALATION_THRESHOLD: f32 = 0.4;
 
 pub const PRECISE_CLOCK_CAPACITY: usize = 16;
 
-/// Exact tracking, FIFO eviction. O(n) but n ≤ 16.
+/// Circular buffer for exact causal tracking. O(1) observe, O(n) contains (n≤16).
 #[derive(Debug, Clone)]
 #[repr(C, align(64))]
 pub struct PreciseClock {
     ancestors: [FactId; PRECISE_CLOCK_CAPACITY],
     count: u8,
-    _pad: [u8; 31],
+    head: u8, // next write position (ring)
+    _pad: [u8; 30],
 }
 
 const _: () = {
@@ -191,19 +192,17 @@ impl PreciseClock {
         Self {
             ancestors: [[0u8; 32]; PRECISE_CLOCK_CAPACITY],
             count: 0,
-            _pad: [0u8; 31],
+            head: 0,
+            _pad: [0u8; 30],
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn observe(&mut self, fact_id: &FactId) {
-        if self.count as usize >= PRECISE_CLOCK_CAPACITY {
-            for i in 0..(PRECISE_CLOCK_CAPACITY - 1) {
-                self.ancestors[i] = self.ancestors[i + 1];
-            }
-            self.ancestors[PRECISE_CLOCK_CAPACITY - 1] = *fact_id;
-        } else {
-            self.ancestors[self.count as usize] = *fact_id;
+        let idx = self.head as usize;
+        self.ancestors[idx] = *fact_id;
+        self.head = ((idx + 1) % PRECISE_CLOCK_CAPACITY) as u8;
+        if (self.count as usize) < PRECISE_CLOCK_CAPACITY {
             self.count += 1;
         }
     }
@@ -252,14 +251,15 @@ impl PreciseClock {
     #[inline(always)]
     pub fn clear(&mut self) {
         self.count = 0;
+        self.head = 0;
     }
 
     #[inline]
     pub fn import_from_slice(&mut self, facts: &[FactId]) {
-        self.count = 0;
         let limit = facts.len().min(PRECISE_CLOCK_CAPACITY);
         self.ancestors[..limit].copy_from_slice(&facts[..limit]);
         self.count = limit as u8;
+        self.head = limit as u8 % PRECISE_CLOCK_CAPACITY as u8;
     }
 }
 
@@ -601,7 +601,7 @@ impl ExactCausalIndex {
         let evict_count = current_count - target;
 
         // mark the oldest `evict_count` entries as tombstones.
-        // O(n) scan is fine — compact is rare (every ~768 inserts).
+        // O(n) scan is fine; compact is rare (every ~768 inserts).
         let mut evicted = 0usize;
         let half = self.seq_counter.wrapping_sub(current_count as u16);
 
