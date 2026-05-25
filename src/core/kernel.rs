@@ -142,10 +142,12 @@ impl<I: Invariant> Kernel<I> {
             }
         }
 
+        let mut scratch = self.state;
         self.invariant
-            .apply(fact.payload(), self.state.as_bytes_mut())
+            .apply(fact.payload(), scratch.as_bytes_mut())
             .map_err(|_| AdmitError::InvariantViolation)?;
 
+        self.state = scratch;
         self.frontier.advance(*fact.id());
 
         Ok(())
@@ -165,10 +167,12 @@ impl<I: Invariant> Kernel<I> {
             }
         }
 
+        let mut scratch = self.state;
         self.invariant
-            .apply(payload, self.state.as_bytes_mut())
+            .apply(payload, scratch.as_bytes_mut())
             .map_err(|_| AdmitError::InvariantViolation)?;
 
+        self.state = scratch;
         self.frontier.advance(*fact_id);
 
         Ok(())
@@ -180,10 +184,12 @@ impl<I: Invariant> Kernel<I> {
         fact_id: &FactId,
         payload: &[u8],
     ) -> Result<(), AdmitError> {
+        let mut scratch = self.state;
         self.invariant
-            .apply(payload, self.state.as_bytes_mut())
+            .apply(payload, scratch.as_bytes_mut())
             .map_err(|_| AdmitError::InvariantViolation)?;
 
+        self.state = scratch;
         self.frontier.advance(*fact_id);
 
         Ok(())
@@ -326,10 +332,12 @@ impl<I: Invariant> TwoLaneKernel<I> {
                 .map_err(|_| AdmitError::CausalHorizonExceeded)?;
         }
 
+        let mut scratch = self.state;
         self.invariant
-            .apply(payload, self.state.as_bytes_mut())
+            .apply(payload, scratch.as_bytes_mut())
             .map_err(|_| AdmitError::InvariantViolation)?;
 
+        self.state = scratch;
         self.frontier.advance(*fact_id);
         self.exact_index.observe(fact_id);
 
@@ -338,10 +346,12 @@ impl<I: Invariant> TwoLaneKernel<I> {
 
     #[inline]
     pub fn admit_unchecked(&mut self, fact_id: &FactId, payload: &[u8]) -> Result<(), AdmitError> {
+        let mut scratch = self.state;
         self.invariant
-            .apply(payload, self.state.as_bytes_mut())
+            .apply(payload, scratch.as_bytes_mut())
             .map_err(|_| AdmitError::InvariantViolation)?;
 
+        self.state = scratch;
         self.frontier.advance(*fact_id);
         self.exact_index.observe(fact_id);
 
