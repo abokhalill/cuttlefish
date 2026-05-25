@@ -286,8 +286,8 @@ pub enum SlotState {
 pub struct IndexSlot {
     pub fact_id: FactId,
     pub state: SlotState,
-    pub psl: u8, // Probe Sequence Length for Robin Hood
-    _pad: [u8; 2],
+    pub psl: u8,
+    pub insertion_seq: u16,
 }
 
 const _: () = {
@@ -301,7 +301,7 @@ impl IndexSlot {
             fact_id: [0u8; 32],
             state: SlotState::Empty,
             psl: 0,
-            _pad: [0u8; 2],
+            insertion_seq: 0,
         }
     }
 
@@ -325,8 +325,8 @@ pub struct CausalHorizonExceeded;
 pub struct ExactCausalIndex {
     slots: [IndexSlot; EXACT_INDEX_CAPACITY],
     count: u32,
-    oldest_sequence: u64,
-    _pad: [u8; 44],
+    seq_counter: u16,
+    _pad: [u8; 42],
 }
 
 const _: () = {
@@ -338,8 +338,8 @@ impl ExactCausalIndex {
         Self {
             slots: [IndexSlot::empty(); EXACT_INDEX_CAPACITY],
             count: 0,
-            oldest_sequence: 0,
-            _pad: [0u8; 44],
+            seq_counter: 0,
+            _pad: [0u8; 42],
         }
     }
 
@@ -363,9 +363,13 @@ impl ExactCausalIndex {
             self.compact();
         }
 
+        let seq = self.seq_counter;
+        self.seq_counter = self.seq_counter.wrapping_add(1);
+
         let mut idx = Self::hash_to_index(fact_id);
         let mut current_fact = *fact_id;
         let mut current_psl: u8 = 0;
+        let mut current_seq: u16 = seq;
 
         loop {
             let slot = &mut self.slots[idx];
@@ -374,6 +378,7 @@ impl ExactCausalIndex {
                 slot.fact_id = current_fact;
                 slot.state = SlotState::Occupied;
                 slot.psl = current_psl;
+                slot.insertion_seq = current_seq;
                 self.count += 1;
                 return true;
             }
@@ -381,6 +386,7 @@ impl ExactCausalIndex {
             if current_psl > slot.psl {
                 core::mem::swap(&mut current_fact, &mut slot.fact_id);
                 core::mem::swap(&mut current_psl, &mut slot.psl);
+                core::mem::swap(&mut current_seq, &mut slot.insertion_seq);
             }
 
             idx = (idx + 1) & EXACT_INDEX_MASK;
@@ -559,68 +565,116 @@ impl ExactCausalIndex {
         Ok(())
     }
 
-    /// Observe a fact (insert it into the index).
     #[inline(always)]
     pub fn observe(&mut self, fact_id: &FactId) {
         self.insert(fact_id);
     }
 
-    /// Number of facts in the index.
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.count as usize
     }
 
-    /// Check if empty.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.count == 0
     }
 
-    /// Load factor (0.0 to 1.0).
     #[inline(always)]
     pub fn load_factor(&self) -> f32 {
         (self.count as f32) / (EXACT_INDEX_CAPACITY as f32)
     }
 
-    /// Compact the table by removing tombstones and rehashing.
-    /// This is called when load factor exceeds threshold.
+    /// evict oldest 50% by insertion_seq, then rehash survivors.
+    /// uses wrapping sequence comparison: a < b iff (a.wrapping_sub(b)) > 32768.
     fn compact(&mut self) {
-        // Collect all occupied entries
-        let mut entries: [Option<FactId>; EXACT_INDEX_CAPACITY] = [None; EXACT_INDEX_CAPACITY];
-        let mut entry_count = 0usize;
+        let target = EXACT_INDEX_CAPACITY / 2;
+        let current_count = self.count as usize;
+        if current_count <= target {
+            // just clear tombstones via rehash
+            self.rehash_in_place();
+            return;
+        }
+
+        // find the median insertion_seq (evict everything below it)
+        // partition: keep the newest `target` entries
+        let evict_count = current_count - target;
+
+        // mark the oldest `evict_count` entries as tombstones.
+        // O(n) scan is fine — compact is rare (every ~768 inserts).
+        let mut evicted = 0usize;
+        let half = self.seq_counter.wrapping_sub(current_count as u16);
+
+        // entries with seq in [half, half+evict_count) are oldest
+        for slot in &mut self.slots {
+            if evicted >= evict_count {
+                break;
+            }
+            if slot.is_occupied() {
+                let age = slot.insertion_seq.wrapping_sub(half);
+                if (age as usize) < evict_count {
+                    slot.state = SlotState::Tombstone;
+                    evicted += 1;
+                }
+            }
+        }
+        self.count -= evicted as u32;
+
+        self.rehash_in_place();
+    }
+
+    /// clear tombstones, rehash all occupied entries.
+    fn rehash_in_place(&mut self) {
+        // collect survivors into a stack-local buffer (max 512 entries after eviction)
+        // 512 * 34 bytes = 17KB; acceptable for rare compaction path
+        let mut survivors: [(FactId, u16); 512] = [([0u8; 32], 0); 512];
+        let mut n = 0usize;
 
         for slot in &self.slots {
-            if slot.is_occupied() {
-                entries[entry_count] = Some(slot.fact_id);
-                entry_count += 1;
+            if slot.is_occupied() && n < 512 {
+                survivors[n] = (slot.fact_id, slot.insertion_seq);
+                n += 1;
             }
         }
 
-        // If still too full, evict oldest 25% (FIFO approximation via slot order)
-        let target_count = EXACT_INDEX_CAPACITY / 2;
-        let keep_count = if entry_count > target_count {
-            target_count
-        } else {
-            entry_count
-        };
-
-        // Clear and reinsert (keeping most recent entries)
         self.slots = [IndexSlot::empty(); EXACT_INDEX_CAPACITY];
         self.count = 0;
 
-        let skip = entry_count.saturating_sub(keep_count);
-        for fact_id in entries.iter().take(entry_count).skip(skip).flatten() {
-            self.insert(fact_id);
-        }
+        for i in 0..n {
+            let (fact_id, seq) = survivors[i];
+            let mut idx = Self::hash_to_index(&fact_id);
+            let mut current_fact = fact_id;
+            let mut current_psl: u8 = 0;
+            let mut current_seq = seq;
 
-        self.oldest_sequence = self.oldest_sequence.saturating_add(skip as u64);
+            loop {
+                let slot = &mut self.slots[idx];
+                if slot.is_empty() {
+                    slot.fact_id = current_fact;
+                    slot.state = SlotState::Occupied;
+                    slot.psl = current_psl;
+                    slot.insertion_seq = current_seq;
+                    self.count += 1;
+                    break;
+                }
+                if current_psl > slot.psl {
+                    core::mem::swap(&mut current_fact, &mut slot.fact_id);
+                    core::mem::swap(&mut current_psl, &mut slot.psl);
+                    core::mem::swap(&mut current_seq, &mut slot.insertion_seq);
+                }
+                idx = (idx + 1) & EXACT_INDEX_MASK;
+                current_psl = current_psl.saturating_add(1);
+                if current_psl > 128 {
+                    break;
+                }
+            }
+        }
     }
 
-    /// Clear the entire index.
     pub fn clear(&mut self) {
         self.slots = [IndexSlot::empty(); EXACT_INDEX_CAPACITY];
         self.count = 0;
+        self.seq_counter = 0;
     }
 }
 
