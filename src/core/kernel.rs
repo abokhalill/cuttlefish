@@ -519,6 +519,8 @@ mod two_lane_durable {
             }
         }
 
+        /// validate -> apply (scratch) -> acquire arena -> commit.
+        /// rejected facts never touch the arena.
         #[inline]
         pub fn admit(
             &mut self,
@@ -527,6 +529,29 @@ mod two_lane_durable {
             payload: &[u8],
             ack_mode: AckMode,
         ) -> Result<SlotIndex, AdmitError> {
+            // 1. causality check (cheap, no side effects)
+            if !deps.is_empty() {
+                let deps_clock = build_deps_clock(deps);
+                if !check_dominance(&self.frontier.clock, &deps_clock) {
+                    return Err(AdmitError::CausalityViolation);
+                }
+                self.exact_index
+                    .contains_all_simd(deps)
+                    .map_err(|_| AdmitError::CausalHorizonExceeded)?;
+            }
+
+            // 2. invariant on scratch (no state mutation on rejection)
+            let mut scratch = self.state;
+            self.invariant
+                .apply(payload, scratch.as_bytes_mut())
+                .map_err(|_| AdmitError::InvariantViolation)?;
+
+            // 3. payload size check before arena acquisition
+            if payload.len() > crate::core::persistence::PAYLOAD_CAPACITY {
+                return Err(AdmitError::PayloadTooLarge);
+            }
+
+            // 4. acquire arena slot (only after all validation passes)
             let slot_idx = self.arena.acquire_slot().map_err(|e| match e {
                 ArenaError::Full => AdmitError::ArenaFull,
                 _ => AdmitError::MalformedFact,
@@ -540,31 +565,12 @@ mod two_lane_durable {
                 });
             }
 
-            if !deps.is_empty() {
-                let deps_clock = build_deps_clock(deps);
-                if !check_dominance(&self.frontier.clock, &deps_clock) {
-                    let _ = self.arena.release_slot(slot_idx);
-                    return Err(AdmitError::CausalityViolation);
-                }
-
-                if self.exact_index.contains_all_simd(deps).is_err() {
-                    let _ = self.arena.release_slot(slot_idx);
-                    return Err(AdmitError::CausalHorizonExceeded);
-                }
-            }
-
-            if self
-                .invariant
-                .apply(payload, self.state.as_bytes_mut())
-                .is_err()
-            {
-                let _ = self.arena.release_slot(slot_idx);
-                return Err(AdmitError::InvariantViolation);
-            }
-
+            // 5. commit: state + frontier (point of no return)
+            self.state = scratch;
             self.frontier.advance(*fact_id);
             self.exact_index.observe(fact_id);
 
+            // 6. persistence handoff
             match ack_mode {
                 AckMode::Volatile => {
                     let _ = self.arena.release_slot(slot_idx);
@@ -595,6 +601,7 @@ mod two_lane_durable {
         }
 
         /// Non-blocking durable admission. Returns handle for async durability polling.
+        /// same validate-first discipline as admit(): no arena touch on rejection.
         #[inline]
         pub fn admit_async(
             &mut self,
@@ -602,6 +609,29 @@ mod two_lane_durable {
             deps: &[FactId],
             payload: &[u8],
         ) -> Result<DurableHandle<'a>, AdmitError> {
+            // 1. causality
+            if !deps.is_empty() {
+                let deps_clock = build_deps_clock(deps);
+                if !check_dominance(&self.frontier.clock, &deps_clock) {
+                    return Err(AdmitError::CausalityViolation);
+                }
+                self.exact_index
+                    .contains_all_simd(deps)
+                    .map_err(|_| AdmitError::CausalHorizonExceeded)?;
+            }
+
+            // 2. invariant on scratch
+            let mut scratch = self.state;
+            self.invariant
+                .apply(payload, scratch.as_bytes_mut())
+                .map_err(|_| AdmitError::InvariantViolation)?;
+
+            // 3. size guard
+            if payload.len() > crate::core::persistence::PAYLOAD_CAPACITY {
+                return Err(AdmitError::PayloadTooLarge);
+            }
+
+            // 4. arena acquire + write
             let slot_idx = self.arena.acquire_slot().map_err(|e| match e {
                 ArenaError::Full => AdmitError::ArenaFull,
                 _ => AdmitError::MalformedFact,
@@ -615,30 +645,12 @@ mod two_lane_durable {
                 });
             }
 
-            if !deps.is_empty() {
-                let deps_clock = build_deps_clock(deps);
-                if !check_dominance(&self.frontier.clock, &deps_clock) {
-                    let _ = self.arena.release_slot(slot_idx);
-                    return Err(AdmitError::CausalityViolation);
-                }
-                if self.exact_index.contains_all_simd(deps).is_err() {
-                    let _ = self.arena.release_slot(slot_idx);
-                    return Err(AdmitError::CausalHorizonExceeded);
-                }
-            }
-
-            if self
-                .invariant
-                .apply(payload, self.state.as_bytes_mut())
-                .is_err()
-            {
-                let _ = self.arena.release_slot(slot_idx);
-                return Err(AdmitError::InvariantViolation);
-            }
-
+            // 5. commit
+            self.state = scratch;
             self.frontier.advance(*fact_id);
             self.exact_index.observe(fact_id);
 
+            // 6. enqueue for persistence
             let header = self.arena.get_header(slot_idx).unwrap();
             let entry = PersistenceEntry {
                 fact_id: *fact_id,
