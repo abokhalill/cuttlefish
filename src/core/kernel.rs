@@ -415,18 +415,21 @@ mod two_lane_durable {
         ArenaError, PersistenceEntry, PersistenceFrontier, SPSCProducer, SlotIndex, WALArena,
     };
 
-    /// Handle for async durability checking. Replaces spin-loop blocking.
+    /// Handle for async durability checking.
+    /// uses sequence comparison (monotonic, zero false positives).
     #[derive(Clone, Copy)]
     pub struct DurableHandle<'a> {
         fact_id: FactId,
         slot_idx: SlotIndex,
+        sequence: u64,
         frontier: &'a PersistenceFrontier,
     }
 
     impl<'a> DurableHandle<'a> {
         #[inline(always)]
         pub fn poll(&self) -> DurableStatus {
-            if self.frontier.clock().might_contain(&self.fact_id) {
+            // sequence comparison: no false positives, no Bloom involvement
+            if self.frontier.sequence() >= self.sequence {
                 DurableStatus::Durable
             } else {
                 DurableStatus::Pending
@@ -462,6 +465,11 @@ mod two_lane_durable {
         #[inline(always)]
         pub fn slot_idx(&self) -> SlotIndex {
             self.slot_idx
+        }
+
+        #[inline(always)]
+        pub fn sequence(&self) -> u64 {
+            self.sequence
         }
     }
 
@@ -576,7 +584,7 @@ mod two_lane_durable {
                     }
 
                     if ack_mode == AckMode::Durable {
-                        while !self.persistence_frontier.clock().might_contain(fact_id) {
+                        while self.persistence_frontier.sequence() < header.sequence {
                             core::hint::spin_loop();
                         }
                     }
@@ -647,6 +655,7 @@ mod two_lane_durable {
             Ok(DurableHandle {
                 fact_id: *fact_id,
                 slot_idx,
+                sequence: header.sequence,
                 frontier: self.persistence_frontier,
             })
         }

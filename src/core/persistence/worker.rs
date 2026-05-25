@@ -64,6 +64,8 @@ impl Default for SubmissionBuffer {
 }
 
 /// Persistence frontier tracking durable facts.
+/// sequence is the ground truth for durability (monotonic, no false positives).
+/// clock is advisory for query_durable (Bloom, has false positives; never use for ack).
 pub struct PersistenceFrontier {
     clock: CausalClock,
     sequence: AtomicU64,
